@@ -1,0 +1,85 @@
+// app/layout.tsx
+import { ThemeProvider } from "@/components/theme-provider"
+import { Children } from "react"
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="pt-BR" suppressHydrationWarning>
+      <body className="min-h-screen bg-background text-foreground antialiased">
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+          {children}
+        </ThemeProvider>
+      </body>
+    </html>
+  )
+}
+
+// app/page.tsx
+import { Children } from "react"
+
+export default function Page({ children }) {
+  return (
+    <main className="relative min-h-screen bg-background text-foreground">
+      {children}
+    </main>
+  )
+}
+
+// components/header-bar.tsx
+import { Popover } from "@headlessui/react"
+import { MenuIcon, XIcon } from "@heroicons/react/outline"
+import { useState } from "react"
+import ThemeToggle from "@/components/theme-toggle"
+
+export default function HeaderBar() {
+  const [isOpen, setIsOpen] = useState(false)
+
+  return (
+    <header className="fixed top-0 left-0 right-0 z-50 backdrop-blur bg-white/70 supports-[backdrop-filter]:bg-white/60 dark:bg-neutral-900/60 supports-[backdrop-filter]:dark:bg-neutral-900/50 border-b border-black/5 dark:border-white/10">
+      <div className="container mx-auto px-4 py-2 flex justify-between items-center">
+        <button onClick={() => setIsOpen(!isOpen)} className="p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+          {isOpen ? <XIcon className="h-6 w-6" /> : <MenuIcon className="h-6 w-6" />}
+        </button>
+        <div className="flex items-center gap-2">
+          <Popover>
+            {/* Popover content here */}
+          </Popover>
+          <ThemeToggle />
+          <button className="p-2 rounded-md bg-red-500 text-white hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+            Sair
+          </button>
+        </div>
+      </div>
+    </header>
+  )
+}
+
+// components/map-canvas.tsx
+import { useTheme } from "next-themes"
+import { useEffect, useState } from "react"
+import { MapContainer, TileLayer } from "react-leaflet"
+
+export default function MapCanvas() {
+  const { resolvedTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+
+  return (
+    <MapContainer center={[51.505, -0.09]} zoom={13}>
+      {mounted && resolvedTheme === "dark" ? (
+        <TileLayer
+          attribution={'Mapa © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors • Tiles © <a href="https://carto.com/attributions">CARTO</a>'}
+          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          subdomains={["a","b","c","d"] as any}
+          crossOrigin="anonymous"
+        />
+      ) : (
+        <TileLayer
+          attribution={'Mapa © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          crossOrigin="anonymous"
+        />
+      )}
+    </MapContainer>
+  )
+}
