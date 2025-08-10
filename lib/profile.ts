@@ -28,6 +28,15 @@ const NAMES = [
 ]
 
 export function getOrCreateProfile(forceNew?: boolean): Profile {
+  // Verifica se está no cliente
+  if (typeof window === "undefined") {
+    // Retorna um perfil temporário para SSR
+    return {
+      id: "temp-id",
+      name: "Temp User"
+    }
+  }
+
   if (!forceNew) {
     const raw = localStorage.getItem(LS_PROFILE)
     if (raw) {
@@ -36,6 +45,7 @@ export function getOrCreateProfile(forceNew?: boolean): Profile {
       } catch {}
     }
   }
+  
   const id = nanoid(10)
   const name = `${NAMES[Math.floor(Math.random() * NAMES.length)]} ${id.slice(0, 4)}`
   const profile: Profile = { id, name }
@@ -44,6 +54,8 @@ export function getOrCreateProfile(forceNew?: boolean): Profile {
 }
 
 export function signOutProfile() {
+  if (typeof window === "undefined") return
+  
   localStorage.removeItem(LS_PROFILE)
   // Reset tokens too for a fresh start
   localStorage.removeItem("rplace:tokens")
