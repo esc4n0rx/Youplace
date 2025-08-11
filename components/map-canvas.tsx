@@ -15,10 +15,8 @@ export type PixelCell = {
   userId: string
   userName: string
 }
-
 const PIXELS_STORAGE_KEY = "rplace:pixels"
 
-// Componente interno do mapa (será carregado dinamicamente)
 const MapContent = dynamic(
   () => import("./map-content"),
   { 

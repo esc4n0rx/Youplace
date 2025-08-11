@@ -1,6 +1,8 @@
+// hooks/use-cooldown.ts
+
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 const LS_TOKENS = "rplace:tokens"
 const LS_LAST_REFILL = "rplace:lastRefill"
@@ -95,10 +97,20 @@ export function useCooldown(config?: {
     return true
   }, [tokens])
 
-  const nextRefillSeconds = Math.max(
-    0,
-    Math.ceil((refillIntervalMs - (now() - Number(localStorage.getItem(LS_LAST_REFILL) ?? lastRefill))) / 1000),
-  )
+  const nextRefillSeconds = useMemo(() => {
+    // Guard against SSR, where `window` and `localStorage` are not available.
+    if (typeof window === "undefined") {
+      return 0
+    }
+    
+    const lastRefillTime = Number(localStorage.getItem(LS_LAST_REFILL) ?? lastRefill)
+    const timeSinceLastRefill = now() - lastRefillTime
+    
+    return Math.max(
+      0,
+      Math.ceil((refillIntervalMs - timeSinceLastRefill) / 1000)
+    )
+  }, [lastRefill, refillIntervalMs])
 
   return {
     tokens,
