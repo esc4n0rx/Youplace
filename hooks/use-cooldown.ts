@@ -1,8 +1,8 @@
 // hooks/use-cooldown.ts
-
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useAuth } from "@/hooks/use-auth"
 
 const LS_TOKENS = "rplace:tokens"
 const LS_LAST_REFILL = "rplace:lastRefill"
@@ -23,9 +23,14 @@ export function useCooldown(config?: {
   const maxTokens = config?.maxTokens ?? MAX_TOKENS_DEFAULT
   const refillIntervalMs = config?.refillIntervalMs ?? REFILL_INTERVAL_MS_DEFAULT
   const refillAmount = config?.refillAmount ?? REFILL_AMOUNT_DEFAULT
+  const { user } = useAuth()
 
   // Initialize from localStorage
   const computeInitial = () => {
+    if (typeof window === "undefined") {
+      return { tokens: maxTokens, last: now() }
+    }
+    
     const rawTokens = Number(localStorage.getItem(LS_TOKENS) ?? maxTokens)
     const rawLast = Number(localStorage.getItem(LS_LAST_REFILL) ?? now())
     const elapsed = now() - rawLast
@@ -38,18 +43,22 @@ export function useCooldown(config?: {
     return { tokens: nextTokens, last: newLast }
   }
 
-  const initial = typeof window !== "undefined" ? computeInitial() : { tokens: maxTokens, last: now() }
+  const initial = computeInitial()
   const [tokens, setTokens] = useState(initial.tokens)
   const [lastRefill, setLastRefill] = useState(initial.last)
   const timerRef = useRef<number | null>(null)
 
   // Broadcast to other components
   const broadcast = (nextTokens: number) => {
-    window.dispatchEvent(new CustomEvent("rplace:tokens", { detail: nextTokens }))
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("rplace:tokens", { detail: nextTokens }))
+    }
   }
 
   // Refill loop
   useEffect(() => {
+    if (typeof window === "undefined") return
+
     const tick = () => {
       const rawTokens = Number(localStorage.getItem(LS_TOKENS) ?? tokens)
       const rawLast = Number(localStorage.getItem(LS_LAST_REFILL) ?? lastRefill)
@@ -79,6 +88,8 @@ export function useCooldown(config?: {
 
   // Listen to external updates
   useEffect(() => {
+    if (typeof window === "undefined") return
+
     const onTokens = (e: Event) => {
       const t = Number(localStorage.getItem(LS_TOKENS) ?? tokens)
       setTokens(t)
@@ -88,6 +99,8 @@ export function useCooldown(config?: {
   }, [tokens])
 
   const consumeToken = useCallback(() => {
+    if (typeof window === "undefined") return false
+    
     const current = Number(localStorage.getItem(LS_TOKENS) ?? tokens)
     if (current <= 0) return false
     const next = current - 1

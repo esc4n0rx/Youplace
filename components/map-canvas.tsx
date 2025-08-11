@@ -1,48 +1,50 @@
+// components/map-canvas.tsx
 "use client"
 
-import { useEffect, useMemo, useState, useCallback } from "react"
-import dynamic from "next/dynamic"
-import type { Map as LeafletMap, LeafletMouseEvent } from "leaflet"
-import "leaflet/dist/leaflet.css"
+import dynamic from 'next/dynamic'
+import { Suspense, useState, useEffect } from 'react'
 
-export type PixelCell = {
-  id: string
-  lat: number
-  lng: number
-  size: number
-  color: string
-  updatedAt: number
-  userId: string
-  userName: string
-}
-const PIXELS_STORAGE_KEY = "rplace:pixels"
-
-const MapContent = dynamic(
-  () => import("./map-content"),
-  { 
-    ssr: false,
-    loading: () => (
-      <div className="h-full w-full flex items-center justify-center">
-        <div className="text-muted-foreground">Carregando mapa...</div>
+// Importa o componente do mapa dinamicamente apenas no cliente
+const MapContent = dynamic(() => import('./map-content'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-full">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-2"></div>
+        <p className="text-sm text-gray-600">Carregando mapa...</p>
       </div>
-    )
-  }
-)
+    </div>
+  )
+})
 
 export default function MapCanvas() {
-  const [mounted, setMounted] = useState(false)
+  const [isClient, setIsClient] = useState(false)
 
   useEffect(() => {
-    setMounted(true)
+    setIsClient(true)
   }, [])
 
-  if (!mounted) {
+  if (!isClient) {
     return (
-      <div className="h-full w-full flex items-center justify-center">
-        <div className="text-muted-foreground">Inicializando...</div>
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-2"></div>
+          <p className="text-sm text-gray-600">Inicializando...</p>
+        </div>
       </div>
     )
   }
 
-  return <MapContent />
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-2"></div>
+          <p className="text-sm text-gray-600">Carregando mapa...</p>
+        </div>
+      </div>
+    }>
+      <MapContent />
+    </Suspense>
+  )
 }
