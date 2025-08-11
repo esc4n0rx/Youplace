@@ -1,7 +1,7 @@
 // components/map-content.tsx
 "use client"
 
-import { useEffect, useState, useCallback, useRef } from "react"
+import { useEffect, useState, useCallback, useMemo } from "react"
 import { Rectangle } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
 import { useToast } from "@/hooks/use-toast"
@@ -14,6 +14,20 @@ import { useTheme } from "next-themes"
 import { useAuth } from "@/hooks/use-auth"
 import { LoginDialog } from "@/components/auth/login-dialog"
 import { MapWrapper } from "./map-wrapper"
+
+// Fix para o Leaflet no Next.js
+import L from 'leaflet'
+import icon from 'leaflet/dist/images/marker-icon.png'
+import iconShadow from 'leaflet/dist/images/marker-shadow.png'
+
+// Configuração dos ícones padrão do Leaflet
+if (typeof window !== 'undefined') {
+  delete (L.Icon.Default.prototype as any)._getIconUrl
+  L.Icon.Default.mergeOptions({
+    iconUrl: icon.src,
+    shadowUrl: iconShadow.src,
+  })
+}
 
 export type PixelCell = {
   id: string
@@ -33,7 +47,7 @@ export default function MapContent() {
   const [hoverCell, setHoverCell] = useState<{ lat: number; lng: number } | null>(null)
   const [mode, setModeState] = useState<Mode>("navigate")
   const [showLoginDialog, setShowLoginDialog] = useState(false)
-  const [mapReady, setMapReady] = useState(false)
+  const [isMapMounted, setIsMapMounted] = useState(false)
   const { toast } = useToast()
   const { consumeToken, tokens } = useCooldown()
   const { user, updateCredits } = useAuth()
@@ -41,50 +55,33 @@ export default function MapContent() {
 
   // Inicialização
   useEffect(() => {
-    let mounted = true
+    // Define o modo inicial
+    setModeState(getMode())
     
-    const initializeMap = async () => {
-      try {
-        setModeState(getMode())
-        
-        // Carrega pixels do localStorage
-        const stored = localStorage.getItem(PIXELS_STORAGE_KEY)
-        if (stored && mounted) {
-          try {
-            const parsedCells = JSON.parse(stored)
-            setCells(parsedCells)
-            console.log("Loaded pixels from localStorage:", Object.keys(parsedCells).length)
-          } catch (error) {
-            console.error("Error parsing stored pixels:", error)
-          }
-        }
-        
-        // Pequeno delay para garantir que o DOM está pronto
-        await new Promise(resolve => setTimeout(resolve, 300))
-        
-        if (mounted) {
-          setMapReady(true)
-        }
-      } catch (error) {
-        console.error("Error initializing map:", error)
-        if (mounted) {
-          setMapReady(true) // Mesmo com erro, tenta renderizar
-        }
+    // Carrega pixels do localStorage
+    try {
+      const stored = localStorage.getItem(PIXELS_STORAGE_KEY)
+      if (stored) {
+        const parsedCells = JSON.parse(stored)
+        setCells(parsedCells)
+        console.log("Loaded pixels from localStorage:", Object.keys(parsedCells).length)
       }
+    } catch (error) {
+      console.error("Error parsing stored pixels:", error)
     }
 
-    initializeMap()
+    // Aguarda um tick antes de montar o mapa para garantir que o DOM esteja pronto
+    const timer = setTimeout(() => {
+      setIsMapMounted(true)
+    }, 100)
 
-    return () => {
-      mounted = false
-    }
+    return () => clearTimeout(timer)
   }, [])
 
   // Salva pixels no localStorage sempre que mudar
   useEffect(() => {
     if (Object.keys(cells).length > 0) {
       localStorage.setItem(PIXELS_STORAGE_KEY, JSON.stringify(cells))
-      console.log("Saved pixels to localStorage:", Object.keys(cells).length)
     }
   }, [cells])
 
@@ -173,59 +170,64 @@ export default function MapContent() {
     })
   }
 
-  // Não renderiza até estar completamente pronto
-  if (!mapReady) {
+  const isDark = resolvedTheme === 'dark'
+
+  // Gera retângulos para cada célula - memoizado para evitar recriações desnecessárias
+  const rectangles = useMemo(() => 
+    Object.values(cells).map(cell => (
+      <Rectangle
+        key={cell.id}
+        bounds={[
+          [cell.lat, cell.lng],
+          [cell.lat + CELL_SIZE_DEG, cell.lng + CELL_SIZE_DEG]
+        ]}
+        pathOptions={{
+          fillColor: cell.color,
+          color: 'transparent',
+          fillOpacity: 0.8,
+          weight: 0
+        }}
+        interactive={false}
+      />
+    )), [cells]
+  )
+
+  // Retângulo de hover - memoizado
+  const hoverRect = useMemo(() => 
+    hoverCell ? (
+      <Rectangle
+        key="hover"
+        bounds={[
+          [hoverCell.lat, hoverCell.lng],
+          [hoverCell.lat + CELL_SIZE_DEG, hoverCell.lng + CELL_SIZE_DEG]
+        ]}
+        pathOptions={{
+          fillColor: readCurrentColor(),
+          color: 'white',
+          fillOpacity: 0.6,
+          weight: 1,
+          dashArray: '3,3'
+        }}
+        interactive={false}
+      />
+    ) : null,
+    [hoverCell]
+  )
+
+  // Não renderiza o mapa até estar pronto
+  if (!isMapMounted) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex items-center justify-center h-full bg-background">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-2"></div>
-          <div className="text-sm text-gray-600">Inicializando mapa...</div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+          <div className="text-sm text-muted-foreground">Inicializando mapa...</div>
         </div>
       </div>
     )
   }
 
-  const isDark = resolvedTheme === 'dark'
-
-  // Gera retângulos para cada célula
-  const rectangles = Object.values(cells).map(cell => (
-    <Rectangle
-      key={cell.id}
-      bounds={[
-        [cell.lat, cell.lng],
-        [cell.lat + CELL_SIZE_DEG, cell.lng + CELL_SIZE_DEG]
-      ]}
-      pathOptions={{
-        fillColor: cell.color,
-        color: 'transparent',
-        fillOpacity: 0.8,
-        weight: 0
-      }}
-      interactive={false}
-    />
-  ))
-
-  // Retângulo de hover
-  const hoverRect = hoverCell ? (
-    <Rectangle
-      key="hover"
-      bounds={[
-        [hoverCell.lat, hoverCell.lng],
-        [hoverCell.lat + CELL_SIZE_DEG, hoverCell.lng + CELL_SIZE_DEG]
-      ]}
-      pathOptions={{
-        fillColor: readCurrentColor(),
-        color: 'white',
-        fillOpacity: 0.6,
-        weight: 1,
-        dashArray: '3,3'
-      }}
-      interactive={false}
-    />
-  ) : null
-
   return (
-    <div className={cn("relative h-full w-full")}>
+    <div className={cn("relative h-full w-full bg-background")}>
       {/* Botões de debug */}
       {process.env.NODE_ENV === 'development' && (
         <div className="absolute top-2 right-2 z-[1000] flex gap-2">
