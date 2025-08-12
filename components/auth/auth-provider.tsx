@@ -3,8 +3,9 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { onAuthStateChanged } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
-import { getCurrentUser } from '@/lib/auth'
+import { getCurrentUser, signInWithGoogle, signOut as firebaseSignOut } from '@/lib/auth'
 import type { User, AuthState } from '@/types/auth'
+import { FirebaseError } from './firebase-error'
 
 interface AuthContextType extends AuthState {
   signIn: () => Promise<void>
@@ -31,6 +32,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     console.log('🔄 Configurando listener de autenticação...')
+    
+    // Verifica se o Firebase está configurado corretamente
+    try {
+      if (!auth) {
+        throw new Error('Firebase não está configurado corretamente')
+      }
+    } catch (error) {
+      console.error('❌ Erro na configuração do Firebase:', error)
+      setAuthState({
+        user: null,
+        loading: false,
+        error: 'Erro na configuração do Firebase. Verifique as variáveis de ambiente.'
+      })
+      return
+    }
     
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       console.log('🔔 Estado de autenticação mudou:', firebaseUser?.uid || 'não autenticado')
@@ -72,6 +88,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           error: error instanceof Error ? error.message : 'Erro desconhecido'
         })
       }
+    }, (error) => {
+      console.error('❌ Erro no listener de autenticação:', error)
+      setAuthState({
+        user: null,
+        loading: false,
+        error: 'Erro na autenticação. Tente recarregar a página.'
+      })
     })
 
     return () => {
@@ -85,7 +108,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('🚀 Iniciando processo de login...')
       setAuthState(prev => ({ ...prev, loading: true, error: null }))
       
-      const { signInWithGoogle } = await import('@/lib/auth')
       const user = await signInWithGoogle()
       
       if (user) {
@@ -117,7 +139,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('👋 Iniciando logout...')
       setAuthState(prev => ({ ...prev, loading: true, error: null }))
       
-      const { signOut: firebaseSignOut } = await import('@/lib/auth')
       await firebaseSignOut()
       
       console.log('✅ Logout realizado com sucesso')
@@ -147,6 +168,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ...prev,
       user: prev.user ? { ...prev.user, credits } : null
     }))
+  }
+
+  // Se houver erro de configuração, mostra mensagem de erro
+  if (authState.error && authState.error.includes('configuração')) {
+    return (
+      <FirebaseError 
+        error={authState.error}
+        onRetry={() => {
+          setAuthState(prev => ({ ...prev, error: null, loading: true }))
+          // Recarrega a página para tentar novamente
+          window.location.reload()
+        }}
+      />
+    )
   }
 
   return (
