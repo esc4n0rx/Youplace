@@ -164,14 +164,14 @@ export async function getCurrentUser(): Promise<User | null> {
   })
 }
 
-export async function updateUserCredits(userId: string, credits: number): Promise<User | null> {
+export async function updateUserCredits(userId: string, newCredits: number): Promise<User | null> {
   try {
-    console.log('💰 Atualizando créditos:', { userId, credits })
+    console.log('💰 Atualizando créditos no banco:', { userId, newCredits })
     
     const { data: user, error } = await supabase
       .from('users')
       .update({ 
-        credits,
+        credits: newCredits,
         updated_at: new Date().toISOString()
       })
       .eq('id', userId)
@@ -179,14 +179,14 @@ export async function updateUserCredits(userId: string, credits: number): Promis
       .single()
 
     if (error) {
-      console.error('❌ Erro ao atualizar créditos:', error)
+      console.error('❌ Erro ao atualizar créditos no Supabase:', error)
       throw error
     }
     
-    console.log('✅ Créditos atualizados:', user)
+    console.log('✅ Créditos atualizados no banco:', user)
     return user
   } catch (error) {
-    console.error('❌ Erro ao atualizar créditos:', error)
+    console.error('❌ Erro na função updateUserCredits:', error)
     return null
   }
 }

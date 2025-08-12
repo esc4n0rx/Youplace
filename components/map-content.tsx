@@ -7,12 +7,14 @@ import "leaflet/dist/leaflet.css"
 import { useToast } from "@/hooks/use-toast"
 import { readCurrentColor } from "@/lib/user-color"
 import { useCooldown } from "@/hooks/use-cooldown"
-import { CELL_SIZE_DEG } from "@/lib/grid"
+import { CELL_SIZE_DEG, originFromLatLng } from "@/lib/grid"
 import { getMode, onModeChange, type Mode } from "@/lib/mode"
 import { cn } from "@/lib/utils"
 import { useTheme } from "next-themes"
 import { useAuth } from "@/hooks/use-auth"
 import { MapWrapper } from "./map-wrapper"
+import { updateUserCredits } from "@/lib/auth"
+
 
 // Fix para o Leaflet no Next.js
 import L from 'leaflet'
@@ -45,16 +47,18 @@ export default function MapContent() {
   const [cells, setCells] = useState<Record<string, PixelCell>>({})
   const [hoverCell, setHoverCell] = useState<{ lat: number; lng: number } | null>(null)
   const [mode, setModeState] = useState<Mode>("navigate")
+  const [currentColor, setCurrentColor] = useState(readCurrentColor())
   const [isMapMounted, setIsMapMounted] = useState(false)
   const { toast } = useToast()
   const { consumeToken, tokens } = useCooldown()
-  const { user, updateCredits } = useAuth()
+  const { user, updateCredits: updateAuthCredits } = useAuth()
   const { resolvedTheme } = useTheme()
 
   // Inicialização
   useEffect(() => {
-    // Define o modo inicial
+    // Define o modo e cor iniciais
     setModeState(getMode())
+    setCurrentColor(readCurrentColor())
     
     // Carrega pixels do localStorage
     try {
@@ -83,15 +87,23 @@ export default function MapContent() {
     }
   }, [cells])
 
-  // Listener para mudanças de modo
+  // Listener para mudanças de modo e cor
   useEffect(() => {
-    const off = onModeChange((m) => setModeState(m))
-    return off
+    const offMode = onModeChange((m) => setModeState(m))
+    const onColorChange = () => setCurrentColor(readCurrentColor())
+    window.addEventListener("rplace:color", onColorChange)
+    
+    return () => {
+      offMode()
+      window.removeEventListener("rplace:color", onColorChange)
+    }
   }, [])
 
   // Função de pintura
   const paintAtLatLng = useCallback(async (lat: number, lng: number) => {
-    console.log("🎨 Tentando pintar pixel em:", { lat, lng, mode, tokens, user: !!user })
+    const { lat: cellLat, lng: cellLng } = originFromLatLng(lat, lng)
+
+    console.log("🎨 Tentando pintar pixel em:", { lat: cellLat, lng: cellLng, mode, tokens, user: !!user })
     
     if (mode !== "paint") {
       console.log("❌ Não está no modo pintura")
@@ -128,41 +140,65 @@ export default function MapContent() {
     
     // Consome um token
     consumeToken()
+
+    const newCredits = user.credits - 1;
     
-    // Calcula o ID único da célula
-    const cellId = `${lat.toFixed(6)}_${lng.toFixed(6)}`
-    
-    // Cria ou atualiza a célula
-    const newCell: PixelCell = {
-      id: cellId,
-      lat,
-      lng,
-      size: CELL_SIZE_DEG,
-      color: readCurrentColor(),
-      updatedAt: Date.now(),
-      userId: user.id,
-      userName: user.name || user.email || 'Usuário'
+    // Atualiza créditos no banco de dados e depois no estado local
+    try {
+      const updatedUser = await updateUserCredits(user.id, newCredits);
+      if (updatedUser) {
+        // Atualiza o estado local do AuthContext
+        updateAuthCredits(updatedUser.credits);
+
+        // Calcula o ID único da célula
+        const cellId = `${cellLat.toFixed(6)}_${cellLng.toFixed(6)}`
+        
+        // Cria ou atualiza a célula
+        const newCell: PixelCell = {
+          id: cellId,
+          lat: cellLat,
+          lng: cellLng,
+          size: CELL_SIZE_DEG,
+          color: readCurrentColor(),
+          updatedAt: Date.now(),
+          userId: user.id,
+          userName: user.name || user.email || 'Usuário'
+        }
+        
+        setCells(prev => ({
+          ...prev,
+          [cellId]: newCell
+        }))
+        
+        toast({
+          title: "Pixel pintado!",
+          description: `Pintado em ${cellLat.toFixed(4)}, ${cellLng.toFixed(4)}`,
+        })
+        
+        console.log("✅ Pixel pintado com sucesso:", newCell)
+      } else {
+        throw new Error("Falha ao atualizar os créditos do usuário no banco.")
+      }
+    } catch (error) {
+      console.error("❌ Erro ao tentar pintar e atualizar créditos:", error);
+      toast({
+        title: "Erro ao pintar",
+        description: "Não foi possível salvar sua pintura. Tente novamente.",
+        variant: "destructive",
+      });
+      // Reverte o consumo do token se a operação falhar? (Opcional)
     }
     
-    setCells(prev => ({
-      ...prev,
-      [cellId]: newCell
-    }))
-    
-    // Atualiza créditos do usuário
-    updateCredits(user.credits - 1)
-    
-    toast({
-      title: "Pixel pintado!",
-      description: `Pintado em ${lat.toFixed(4)}, ${lng.toFixed(4)}`,
-    })
-    
-    console.log("✅ Pixel pintado com sucesso:", newCell)
-  }, [mode, tokens, user, consumeToken, updateCredits, toast])
+  }, [mode, tokens, user, consumeToken, updateAuthCredits, toast])
 
   const handleHover = useCallback((lat: number, lng: number) => {
-    setHoverCell({ lat, lng })
-  }, [])
+    if (mode === "paint") {
+      const { lat: cellLat, lng: cellLng } = originFromLatLng(lat, lng);
+      setHoverCell({ lat: cellLat, lng: cellLng });
+    } else {
+      setHoverCell(null);
+    }
+  }, [mode]);
 
   const clearAllPixels = () => {
     setCells({})
@@ -187,7 +223,7 @@ export default function MapContent() {
         pathOptions={{
           fillColor: cell.color,
           color: 'transparent',
-          fillOpacity: 0.8,
+          fillOpacity: 1, // Opacidade máxima para cor sólida
           weight: 0
         }}
         interactive={false}
@@ -197,7 +233,7 @@ export default function MapContent() {
 
   // Retângulo de hover - memoizado
   const hoverRect = useMemo(() => 
-    hoverCell ? (
+    mode === "paint" && hoverCell ? (
       <Rectangle
         key="hover"
         bounds={[
@@ -205,16 +241,16 @@ export default function MapContent() {
           [hoverCell.lat + CELL_SIZE_DEG, hoverCell.lng + CELL_SIZE_DEG]
         ]}
         pathOptions={{
-          fillColor: readCurrentColor(),
-          color: 'white',
-          fillOpacity: 0.6,
+          fillColor: currentColor,
+          color: isDark ? 'white' : 'black',
+          fillOpacity: 0.7,
           weight: 1,
-          dashArray: '3,3'
+          dashArray: '2, 2'
         }}
         interactive={false}
       />
     ) : null,
-    [hoverCell]
+    [hoverCell, mode, currentColor, isDark]
   )
 
   // Não renderiza o mapa até estar pronto
@@ -245,9 +281,9 @@ export default function MapContent() {
 
       <MapWrapper
         center={[-23.5489, -46.6388]} // Centro em São Paulo
-        zoom={13}  // Zoom bom para ver pixels pequenos
+        zoom={18}  // Zoom maior para ver pixels pequenos
         minZoom={3}
-        maxZoom={20}
+        maxZoom={22} // Aumentado para permitir mais zoom
         isDark={isDark}
         mode={mode}
         onPaint={paintAtLatLng}
@@ -267,7 +303,7 @@ export default function MapContent() {
             <div className="flex items-center gap-3">
               <div 
                 className="w-6 h-6 rounded border-2 border-white shadow-sm" 
-                style={{ backgroundColor: readCurrentColor() }}
+                style={{ backgroundColor: currentColor }}
               />
               <div>
                 <div className="font-medium text-sm">
