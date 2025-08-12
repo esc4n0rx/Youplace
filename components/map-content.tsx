@@ -12,7 +12,6 @@ import { getMode, onModeChange, type Mode } from "@/lib/mode"
 import { cn } from "@/lib/utils"
 import { useTheme } from "next-themes"
 import { useAuth } from "@/hooks/use-auth"
-import { LoginDialog } from "@/components/auth/login-dialog"
 import { MapWrapper } from "./map-wrapper"
 
 // Fix para o Leaflet no Next.js
@@ -46,7 +45,6 @@ export default function MapContent() {
   const [cells, setCells] = useState<Record<string, PixelCell>>({})
   const [hoverCell, setHoverCell] = useState<{ lat: number; lng: number } | null>(null)
   const [mode, setModeState] = useState<Mode>("navigate")
-  const [showLoginDialog, setShowLoginDialog] = useState(false)
   const [isMapMounted, setIsMapMounted] = useState(false)
   const { toast } = useToast()
   const { consumeToken, tokens } = useCooldown()
@@ -101,8 +99,12 @@ export default function MapContent() {
     }
     
     if (!user) {
-      console.log("🔐 Usuário não autenticado, abrindo modal de login...")
-      setShowLoginDialog(true)
+      console.log("🔐 Usuário não autenticado, exibindo toast.")
+      toast({
+        title: "Login necessário",
+        description: "Você precisa fazer login para pintar. Use o botão 'Entrar' no cabeçalho.",
+        variant: "destructive"
+      })
       return
     }
     
@@ -233,15 +235,6 @@ export default function MapContent() {
       {process.env.NODE_ENV === 'development' && (
         <div className="absolute top-2 right-2 z-[1000] flex gap-2">
           <button
-            onClick={() => {
-              console.log("🧪 Teste: Abrindo modal de login...")
-              setShowLoginDialog(true)
-            }}
-            className="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600"
-          >
-            Teste Login
-          </button>
-          <button
             onClick={clearAllPixels}
             className="bg-red-500 text-white px-2 py-1 rounded text-xs hover:bg-red-600"
           >
@@ -306,48 +299,6 @@ export default function MapContent() {
           </div>
         </div>
       </div>
-
-      {/* Modal de teste simples para debug */}
-      {process.env.NODE_ENV === 'development' && showLoginDialog && (
-        <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center">
-          <div className="bg-background p-6 rounded-lg max-w-md mx-4">
-            <h2 className="text-lg font-bold mb-4">Modal de Teste</h2>
-            <p className="text-muted-foreground mb-4">
-              Este é um modal de teste para verificar se o problema está no componente Dialog.
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  console.log("🧪 Teste: Fechando modal de teste...")
-                  setShowLoginDialog(false)
-                }}
-                className="bg-primary text-primary-foreground px-4 py-2 rounded hover:bg-primary/90"
-              >
-                Fechar
-              </button>
-              <button
-                onClick={() => {
-                  console.log("🧪 Teste: Simulando login...")
-                  // Simula um login bem-sucedido
-                  setShowLoginDialog(false)
-                }}
-                className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
-              >
-                Simular Login
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Dialog de login quando não autenticado */}
-      <LoginDialog 
-        open={showLoginDialog} 
-        onOpenChange={(open) => {
-          console.log("🔐 Modal de login:", open ? "aberto" : "fechado")
-          setShowLoginDialog(open)
-        }} 
-      />
     </div>
   )
 }
