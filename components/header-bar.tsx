@@ -62,7 +62,7 @@ export default function HeaderBar() {
     <>
       <header
         className={cn(
-          "fixed top-0 left-0 right-0 z-50",
+          "fixed top-0 left-0 right-0 z-40",
           "bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/60",
           "dark:bg-neutral-900/60 supports-[backdrop-filter]:dark:bg-neutral-900/50",
           "border-b",
