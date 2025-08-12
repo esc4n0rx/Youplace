@@ -6,7 +6,7 @@
 // 0.001 graus é aproximadamente 111 metros no equador
 // 0.0001 graus é aproximadamente 11 metros
 // 0.00001 graus é aproximadamente 1.1 metro
-export const CELL_SIZE_DEG = 0.00001 // Aproximadamente 1.1 metro - um "pixel"
+export const CELL_SIZE_DEG = 0.0001 // Aproximadamente 11 metros
 
 export function originFromLatLng(lat: number, lng: number) {
   const latIndex = Math.floor((lat + 90) / CELL_SIZE_DEG) // shift to positive range, then index
