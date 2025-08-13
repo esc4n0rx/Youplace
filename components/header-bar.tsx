@@ -1,16 +1,16 @@
 // components/header-bar.tsx
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, useCallback } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { LogOut, PaintBucket, Sparkles, MousePointer2, User } from "lucide-react"
 import { HexColorPicker } from "react-colorful"
-import { readCurrentColor, setCurrentColor } from "@/lib/user-color"
+import { readCurrentColor, setCurrentColor, onColorChange } from "@/lib/user-color"
 import { useCooldown } from "@/hooks/use-cooldown"
-import { setMode, getMode, type Mode } from "@/lib/mode"
+import { setMode, getMode, type Mode, onModeChange } from "@/lib/mode"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
 import { LoginDialog } from "@/components/auth/login-dialog"
@@ -21,21 +21,28 @@ export default function HeaderBar() {
   const { tokens, nextRefillSeconds, maxTokens } = useCooldown()
   const [mode, setModeState] = useState<Mode>(getMode())
   const [showLoginDialog, setShowLoginDialog] = useState(false)
+  const [isColorPickerOpen, setIsColorPickerOpen] = useState(false)
 
+  // Sincroniza a cor inicial e escuta mudanças
   useEffect(() => {
-    const onColor = () => setColor(readCurrentColor())
-    window.addEventListener("rplace:color", onColor)
-    return () => window.removeEventListener("rplace:color", onColor)
+    // Define a cor inicial
+    setColor(readCurrentColor())
+    
+    // Escuta mudanças de cor
+    const unsubscribe = onColorChange((newColor) => {
+      console.log("🎨 Cor alterada:", newColor)
+      setColor(newColor)
+    })
+    
+    return unsubscribe
   }, [])
 
+  // Escuta mudanças de modo
   useEffect(() => {
-    // Sync with persisted mode across tabs/components
-    const off = (() => {
-      const handler = () => setModeState(getMode())
-      window.addEventListener("rplace:mode", handler as any)
-      return () => window.removeEventListener("rplace:mode", handler as any)
-    })()
-    return off
+    const unsubscribe = onModeChange((newMode) => {
+      setModeState(newMode)
+    })
+    return unsubscribe
   }, [])
 
   const initials = useMemo(() => {
@@ -45,10 +52,10 @@ export default function HeaderBar() {
     return s.toUpperCase()
   }, [user?.name])
 
-  const switchMode = (next: Mode) => {
+  const switchMode = useCallback((next: Mode) => {
     setMode(next)
     setModeState(next)
-  }
+  }, [])
 
   const handleSignOut = async () => {
     try {
@@ -57,6 +64,12 @@ export default function HeaderBar() {
       console.error("Erro no logout:", error)
     }
   }
+
+  const handleColorChange = useCallback((newColor: string) => {
+    console.log("🎨 Mudando cor para:", newColor)
+    setColor(newColor)
+    setCurrentColor(newColor)
+  }, [])
 
   return (
     <>
@@ -131,27 +144,79 @@ export default function HeaderBar() {
                 </div>
               )}
 
-              <Popover>
+              <Popover open={isColorPickerOpen} onOpenChange={setIsColorPickerOpen}>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" size="icon" aria-label="Selecionar cor">
-                    <div className="h-4 w-4 rounded-sm border shadow-inner" style={{ backgroundColor: color }} />
-                    <span className="sr-only">Selecionar cor</span>
+                  <Button 
+                    variant="outline" 
+                    size="icon" 
+                    aria-label="Selecionar cor"
+                    className="relative"
+                  >
+                    <div 
+                      className="h-4 w-4 rounded-sm border shadow-inner transition-colors" 
+                      style={{ backgroundColor: color }} 
+                    />
+                    <span className="sr-only">Selecionar cor atual: {color}</span>
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-64" align="end">
-                  <div className="grid gap-3">
+                <PopoverContent className="w-64" align="end" sideOffset={5}>
+                  <div className="grid gap-4">
                     <div className="flex items-center gap-2">
                       <PaintBucket className="h-4 w-4 text-muted-foreground" />
-                      <p className="text-sm font-medium">Cor atual</p>
+                      <p className="text-sm font-medium">Selecionar cor</p>
                     </div>
-                    <HexColorPicker
-                      color={color}
-                      onChange={(c) => {
-                        setColor(c)
-                        setCurrentColor(c)
-                      }}
-                    />
-                    <div className="text-xs text-muted-foreground font-mono text-center">{color}</div>
+                    
+                    <div className="space-y-3">
+                      <HexColorPicker
+                        color={color}
+                        onChange={handleColorChange}
+                        style={{ width: '100%' }}
+                      />
+                      
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs text-muted-foreground font-mono">
+                          {color.toUpperCase()}
+                        </div>
+                        <div 
+                          className="w-8 h-8 rounded border-2 border-white shadow-sm"
+                          style={{ backgroundColor: color }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Cores predefinidas */}
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground">Cores populares</p>
+                      <div className="grid grid-cols-8 gap-1">
+                        {[
+                          "#ff4d4f", "#ff7a45", "#ffa940", "#ffec3d",
+                          "#bae637", "#52c41a", "#13c2c2", "#1890ff",
+                          "#2f54eb", "#722ed1", "#eb2f96", "#f5222d",
+                          "#fa541c", "#fa8c16", "#fadb14", "#a0d911",
+                          "#ffffff", "#f0f0f0", "#d9d9d9", "#bfbfbf",
+                          "#8c8c8c", "#595959", "#262626", "#000000"
+                        ].map((presetColor) => (
+                          <button
+                            key={presetColor}
+                            className={cn(
+                              "w-6 h-6 rounded border hover:scale-110 transition-transform",
+                              color === presetColor ? "ring-2 ring-primary ring-offset-1" : ""
+                            )}
+                            style={{ backgroundColor: presetColor }}
+                            onClick={() => handleColorChange(presetColor)}
+                            aria-label={`Selecionar cor ${presetColor}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    <Button 
+                      size="sm" 
+                      onClick={() => setIsColorPickerOpen(false)}
+                      className="w-full"
+                    >
+                      Confirmar
+                    </Button>
                   </div>
                 </PopoverContent>
               </Popover>
