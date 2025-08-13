@@ -1,3 +1,4 @@
+// components/header-bar.tsx
 "use client"
 
 import { useEffect, useMemo, useState, useCallback } from "react"
@@ -20,23 +21,29 @@ export default function HeaderBar() {
   const { tokens, nextRefillSeconds, maxTokens } = useCooldown()
   const [mode, setModeState] = useState<Mode>("navigate")
   const [showLoginDialog, setShowLoginDialog] = useState(false)
-  const [colorPickerOpen, setColorPickerOpen] = useState(false)
 
+  // Inicialização
   useEffect(() => {
     if (typeof window === "undefined") return
     
+    // Carrega valores iniciais
     const initialColor = readCurrentColor()
     const initialMode = getMode()
+    
+    console.log("🎨 Cor inicial:", initialColor)
+    console.log("🔄 Modo inicial:", initialMode)
     
     setColor(initialColor)
     setModeState(initialMode)
   }, [])
 
+  // Listener para mudanças de cor
   useEffect(() => {
     if (typeof window === "undefined") return
     
     const onColorChange = () => {
       const newColor = readCurrentColor()
+      console.log("🎨 Cor alterada via evento:", newColor)
       setColor(newColor)
     }
     
@@ -44,11 +51,12 @@ export default function HeaderBar() {
     return () => window.removeEventListener("rplace:color", onColorChange)
   }, [])
 
-
+  // Listener para mudanças de modo
   useEffect(() => {
     if (typeof window === "undefined") return
     
     const unsubscribe = onModeChange((newMode) => {
+      console.log("🔄 Modo alterado via evento:", newMode)
       setModeState(newMode)
     })
     return unsubscribe
@@ -62,6 +70,7 @@ export default function HeaderBar() {
   }, [user?.name])
 
   const switchMode = useCallback((next: Mode) => {
+    console.log("🔄 Alterando modo:", next)
     setMode(next)
   }, [])
 
@@ -74,12 +83,9 @@ export default function HeaderBar() {
   }
 
   const handleColorChange = useCallback((newColor: string) => {
+    console.log("🎨 Usuário selecionou cor:", newColor)
     setColor(newColor)
     setCurrentColor(newColor)
-  }, [])
-
-  const handleColorPickerToggle = useCallback((open: boolean) => {
-    setColorPickerOpen(open)
   }, [])
 
   return (
@@ -155,18 +161,14 @@ export default function HeaderBar() {
                 </div>
               )}
 
-              {/* Color Picker - Disponível independente do modo */}
-              <Popover open={colorPickerOpen} onOpenChange={handleColorPickerToggle}>
+              {/* Color Picker - Simplificado */}
+              <Popover>
                 <PopoverTrigger asChild>
                   <Button 
                     variant="outline" 
                     size="icon" 
                     aria-label="Selecionar cor"
                     className="relative hover:ring-2 hover:ring-primary/20 transition-all"
-                    onClick={() => {
-                      console.log("🎨 Botão de cor clicado, estado atual:", colorPickerOpen)
-                      setColorPickerOpen(!colorPickerOpen)
-                    }}
                   >
                     <div 
                       className="h-4 w-4 rounded-sm border-2 border-white shadow-lg" 
@@ -179,7 +181,6 @@ export default function HeaderBar() {
                   className="w-72 p-4" 
                   align="end" 
                   sideOffset={8}
-                  onOpenAutoFocus={(e) => e.preventDefault()}
                 >
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
@@ -240,16 +241,6 @@ export default function HeaderBar() {
                           />
                         ))}
                       </div>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Button 
-                        size="sm" 
-                        onClick={() => setColorPickerOpen(false)}
-                        className="flex-1"
-                      >
-                        Fechar
-                      </Button>
                     </div>
                   </div>
                 </PopoverContent>
