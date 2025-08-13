@@ -12,11 +12,15 @@ export function getMode(): Mode {
 }
 
 export function setMode(mode: Mode) {
+  if (typeof window === "undefined") return
+  
   localStorage.setItem(LS_MODE, mode)
   window.dispatchEvent(new CustomEvent(EVT, { detail: mode }))
 }
 
 export function onModeChange(cb: (mode: Mode) => void) {
+  if (typeof window === "undefined") return () => {}
+  
   const handler = (e: Event) => {
     const detail = (e as CustomEvent).detail as Mode
     cb(detail)
