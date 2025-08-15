@@ -12,11 +12,5 @@ export function useAuth() {
     throw new Error('useAuth deve ser usado dentro de AuthProvider')
   }
   
-  // Verifica se o contexto tem todas as propriedades necessárias
-  if (!context.signIn || !context.signOut || typeof context.updateCredits !== 'function') {
-    console.error('❌ Contexto de autenticação inválido:', context)
-    throw new Error('Contexto de autenticação inválido')
-  }
-  
   return context
 }

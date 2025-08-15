@@ -5,6 +5,7 @@ import { GeistMono } from 'geist/font/mono'
 import { ThemeProvider } from "@/components/theme-provider"
 import { AuthProvider } from "@/components/auth/auth-provider"
 import { Toaster } from "@/components/ui/toaster"
+import Script from 'next/script'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -41,6 +42,12 @@ html {
             <Toaster />
           </AuthProvider>
         </ThemeProvider>
+        
+        {/* Google Identity Services */}
+        <Script
+          src="https://accounts.google.com/gsi/client"
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   )

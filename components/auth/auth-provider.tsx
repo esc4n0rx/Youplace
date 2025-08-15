@@ -1,14 +1,13 @@
+// components/auth/auth-provider.tsx
 "use client"
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { onAuthStateChanged } from 'firebase/auth'
-import { auth } from '@/lib/firebase'
-import { getCurrentUser, signInWithGoogle, signOut as firebaseSignOut } from '@/lib/auth'
+import { getCurrentUser, signOut as authSignOut, storeUserData, clearUserData } from '@/lib/auth'
+import { apiAuth } from '@/lib/api-auth'
 import type { User, AuthState } from '@/types/auth'
-import { FirebaseError } from './firebase-error'
 
 interface AuthContextType extends AuthState {
-  signIn: () => Promise<void>
+  signIn: (user: User, token: string) => void
   signOut: () => Promise<void>
   updateCredits: (credits: number) => void
 }
@@ -30,50 +29,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     error: null
   })
 
+  // Verifica se há um usuário autenticado na inicialização
   useEffect(() => {
-    console.log('🔄 Configurando listener de autenticação...')
+    console.log('🔄 Verificando autenticação...')
     
-    // Verifica se o Firebase está configurado corretamente
-    try {
-      if (!auth) {
-        throw new Error('Firebase não está configurado corretamente')
-      }
-    } catch (error) {
-      console.error('❌ Erro na configuração do Firebase:', error)
-      setAuthState({
-        user: null,
-        loading: false,
-        error: 'Erro na configuração do Firebase. Verifique as variáveis de ambiente.'
-      })
-      return
-    }
-    
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log('🔔 Estado de autenticação mudou:', firebaseUser?.uid || 'não autenticado')
-      
-      setAuthState(prev => ({ ...prev, loading: true, error: null }))
-      
+    const checkAuth = async () => {
       try {
-        if (firebaseUser) {
-          const user = await getCurrentUser()
-          
-          if (user) {
-            console.log('✅ Usuário carregado:', user)
-            setAuthState({
-              user,
-              loading: false,
-              error: null
-            })
-          } else {
-            console.log('⚠️ Usuário autenticado mas não encontrado no banco')
-            setAuthState({
-              user: null,
-              loading: false,
-              error: 'Usuário não encontrado. Por favor, faça login novamente.'
-            })
-          }
+        // Verifica se há token salvo
+        const token = apiAuth.getToken()
+        
+        if (!token) {
+          console.log('❌ Nenhum token encontrado')
+          setAuthState({
+            user: null,
+            loading: false,
+            error: null
+          })
+          return
+        }
+
+        // Verifica se o token é válido buscando dados do usuário
+        const user = await getCurrentUser()
+        
+        if (user) {
+          console.log('✅ Usuário autenticado encontrado:', user)
+          setAuthState({
+            user,
+            loading: false,
+            error: null
+          })
         } else {
-          console.log('❌ Nenhum usuário autenticado')
+          console.log('⚠️ Token inválido, removendo...')
+          apiAuth.removeToken()
+          clearUserData()
           setAuthState({
             user: null,
             loading: false,
@@ -81,57 +69,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           })
         }
       } catch (error) {
-        console.error('❌ Erro ao carregar usuário:', error)
+        console.error('❌ Erro ao verificar autenticação:', error)
+        apiAuth.removeToken()
+        clearUserData()
         setAuthState({
           user: null,
           loading: false,
-          error: error instanceof Error ? error.message : 'Erro desconhecido'
+          error: error instanceof Error ? error.message : 'Erro na autenticação'
         })
       }
-    }, (error) => {
-      console.error('❌ Erro no listener de autenticação:', error)
-      setAuthState({
-        user: null,
-        loading: false,
-        error: 'Erro na autenticação. Tente recarregar a página.'
-      })
-    })
-
-    return () => {
-      console.log('🔚 Removendo listener de autenticação')
-      unsubscribe()
     }
+
+    checkAuth()
   }, [])
 
-  const signIn = async () => {
-    try {
-      console.log('🚀 Iniciando processo de login...')
-      setAuthState(prev => ({ ...prev, loading: true, error: null }))
-      
-      const user = await signInWithGoogle()
-      
-      if (user) {
-        console.log('✅ Login bem-sucedido:', user)
-        setAuthState({
-          user,
-          loading: false,
-          error: null
-        })
-      } else {
-        throw new Error('Falha ao obter dados do usuário após login')
-      }
-    } catch (error) {
-      console.error('❌ Erro no login:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Erro no login'
-      
-      setAuthState(prev => ({
-        ...prev,
-        loading: false,
-        error: errorMessage
-      }))
-      
-      throw error
-    }
+  const signIn = (user: User, token: string) => {
+    console.log('✅ Usuário logado com sucesso:', user)
+    apiAuth.setToken(token)
+    storeUserData(user) // Armazena os dados completos do usuário
+    setAuthState({
+      user,
+      loading: false,
+      error: null
+    })
   }
 
   const signOut = async () => {
@@ -139,7 +99,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('👋 Iniciando logout...')
       setAuthState(prev => ({ ...prev, loading: true, error: null }))
       
-      await firebaseSignOut()
+      await authSignOut()
+      clearUserData() // Remove os dados do usuário do localStorage
       
       console.log('✅ Logout realizado com sucesso')
       setAuthState({
@@ -164,24 +125,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updateCredits = (credits: number) => {
     console.log('💰 Atualizando créditos localmente:', credits)
     
-    setAuthState(prev => ({
-      ...prev,
-      user: prev.user ? { ...prev.user, credits } : null
-    }))
-  }
-
-  // Se houver erro de configuração, mostra mensagem de erro
-  if (authState.error && authState.error.includes('configuração')) {
-    return (
-      <FirebaseError 
-        error={authState.error}
-        onRetry={() => {
-          setAuthState(prev => ({ ...prev, error: null, loading: true }))
-          // Recarrega a página para tentar novamente
-          window.location.reload()
-        }}
-      />
-    )
+    setAuthState(prev => {
+      if (prev.user) {
+        const updatedUser = { ...prev.user, credits }
+        storeUserData(updatedUser) // Atualiza também no localStorage
+        return {
+          ...prev,
+          user: updatedUser
+        }
+      }
+      return prev
+    })
   }
 
   return (

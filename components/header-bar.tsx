@@ -63,11 +63,11 @@ export default function HeaderBar() {
   }, [])
 
   const initials = useMemo(() => {
-    if (!user?.name) return "?"
-    const parts = user.name.trim().split(" ")
+    if (!user?.username) return "?"
+    const parts = user.username.trim().split(" ")
     const s = parts.length >= 2 ? parts[0][0] + parts[1][0] : parts[0][0]
     return s.toUpperCase()
-  }, [user?.name])
+  }, [user?.username])
 
   const switchMode = useCallback((next: Mode) => {
     console.log("🔄 Alterando modo:", next)
@@ -104,17 +104,13 @@ export default function HeaderBar() {
           <div className="h-16 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <Avatar className="h-9 w-9 ring-1 ring-black/10">
-                {user?.avatar_url ? (
-                  <AvatarImage src={user.avatar_url} alt="Avatar do usuário" />
-                ) : (
-                  <AvatarFallback>
-                    {user ? initials : <User className="h-4 w-4" />}
-                  </AvatarFallback>
-                )}
+                <AvatarFallback>
+                  {user ? initials : <User className="h-4 w-4" />}
+                </AvatarFallback>
               </Avatar>
               <div className="flex flex-col">
                 <span className="text-sm font-medium truncate">
-                  {authLoading ? "Carregando..." : user?.name || "Visitante"}
+                  {authLoading ? "Carregando..." : user?.username || "Visitante"}
                 </span>
                 <span className="text-xs text-muted-foreground hidden sm:inline">
                   r/place • mapa mundial
