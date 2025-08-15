@@ -27,8 +27,7 @@ export function RegisterForm({ onSuccess, onSwitchToLogin }: RegisterFormProps) 
     if (password !== confirmPassword) {
       toast({
         title: "Erro na validação",
-        description: "As senhas não coincidem",
-        variant: "destructive"
+        description: "As senhas não coincidem"
       })
       return
     }
@@ -36,8 +35,7 @@ export function RegisterForm({ onSuccess, onSwitchToLogin }: RegisterFormProps) 
     if (password.length < 6) {
       toast({
         title: "Erro na validação", 
-        description: "A senha deve ter pelo menos 6 caracteres",
-        variant: "destructive"
+        description: "A senha deve ter pelo menos 6 caracteres"
       })
       return
     }
@@ -60,8 +58,7 @@ export function RegisterForm({ onSuccess, onSwitchToLogin }: RegisterFormProps) 
       
       toast({
         title: "Erro no registro",
-        description: errorMessage,
-        variant: "destructive"
+        description: errorMessage
       })
     } finally {
       setLoading(false)

@@ -2,8 +2,9 @@
 "use client"
 
 import { useEffect, useMemo } from "react"
-import { MapContainer, TileLayer } from "react-leaflet"
+import { MapContainer, TileLayer, useMap } from "react-leaflet"
 import { MapEventHandler } from "@/components/map-event-handler"
+import type { LatLngBounds } from "leaflet"
 
 interface MapWrapperProps {
   center: [number, number]
@@ -14,9 +15,38 @@ interface MapWrapperProps {
   mode: any
   onPaint: (lat: number, lng: number) => void
   onHover: (lat: number, lng: number) => void
+  onBoundsChange?: (bounds: LatLngBounds) => void
   rectangles: React.ReactNode
   hoverRect: React.ReactNode
   className?: string
+}
+
+// Componente para detectar mudanças de bounds
+function BoundsWatcher({ onBoundsChange }: { onBoundsChange?: (bounds: LatLngBounds) => void }) {
+  const map = useMap()
+
+  useEffect(() => {
+    if (!onBoundsChange) return
+
+    const updateBounds = () => {
+      const bounds = map.getBounds()
+      onBoundsChange(bounds)
+    }
+
+    // Dispara inicialmente
+    updateBounds()
+
+    // Escuta eventos de movimento
+    map.on('moveend', updateBounds)
+    map.on('zoomend', updateBounds)
+
+    return () => {
+      map.off('moveend', updateBounds)
+      map.off('zoomend', updateBounds)
+    }
+  }, [map, onBoundsChange])
+
+  return null
 }
 
 export function MapWrapper({
@@ -28,6 +58,7 @@ export function MapWrapper({
   mode,
   onPaint,
   onHover,
+  onBoundsChange,
   rectangles,
   hoverRect,
   className
@@ -79,6 +110,9 @@ export function MapWrapper({
         onPaint={onPaint}
         onHover={onHover}
       />
+
+      {/* Watcher para bounds */}
+      <BoundsWatcher onBoundsChange={onBoundsChange} />
 
       {/* Renderiza os retângulos */}
       {rectangles}

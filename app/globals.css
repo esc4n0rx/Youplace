@@ -121,3 +121,110 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Z-index hierarchy for UI components over Leaflet map */
+@layer components {
+  /* Leaflet map container - força z-index baixo */
+  .leaflet-container {
+    z-index: 1 !important;
+  }
+  
+  /* Leaflet controls (zoom buttons, etc) */
+  .leaflet-control-container {
+    z-index: 800 !important;
+  }
+  
+  /* Leaflet popups */
+  .leaflet-popup-pane {
+    z-index: 700 !important;
+  }
+  
+  /* Leaflet tooltips */
+  .leaflet-tooltip-pane {
+    z-index: 650 !important;
+  }
+  
+  /* Nossos overlays do mapa (loading, interface de pintura, etc) */
+  .map-overlay {
+    z-index: 900 !important;
+  }
+  
+  /* Header bar - deve ficar acima do mapa */
+  header[role="banner"] {
+    z-index: 950 !important;
+  }
+  
+  /* Popovers - devem ficar acima de tudo */
+  [data-radix-popper-content-wrapper] {
+    z-index: 1100 !important;
+  }
+  
+  /* Toasts - devem ficar no topo absoluto */
+  [data-sonner-toaster] {
+    z-index: 1200 !important;
+  }
+  
+  /* Dialogs e modals */
+  [data-slot="dialog-overlay"],
+  [data-slot="alert-dialog-overlay"],
+  [data-slot="sheet-overlay"],
+  [data-slot="drawer-overlay"] {
+    z-index: 1050 !important;
+  }
+  
+  [data-slot="dialog-content"],
+  [data-slot="alert-dialog-content"],
+  [data-slot="sheet-content"],
+  [data-slot="drawer-content"] {
+    z-index: 1051 !important;
+  }
+  
+  /* Dropdowns e selects */
+  [data-slot="dropdown-menu-content"],
+  [data-slot="select-content"],
+  [data-slot="context-menu-content"],
+  [data-slot="menubar-content"],
+  [data-slot="navigation-menu-content"] {
+    z-index: 1000 !important;
+  }
+  
+  /* Tooltips */
+  [data-slot="tooltip-content"] {
+    z-index: 1150 !important;
+  }
+  
+  /* Hover cards */
+  [data-slot="hover-card-content"] {
+    z-index: 1050 !important;
+  }
+  
+  /* Command palette */
+  [data-slot="command"] {
+    z-index: 1100 !important;
+  }
+}
+
+/* Específico para o nosso toast system */
+.toaster {
+  z-index: 1200 !important;
+}
+
+.toaster [data-sonner-toast] {
+  z-index: 1201 !important;
+}
+
+/* Garante que elementos com data-slot=popover-content fiquem visíveis */
+[data-slot="popover-content"] {
+  z-index: 1100 !important;
+  position: relative;
+}
+
+/* Força popovers do radix a ficarem acima */
+[data-radix-portal] {
+  z-index: 1100 !important;
+}
+
+/* Google OAuth popup fix */
+[data-slot="dialog-portal"] [data-slot="dialog-content"] {
+  z-index: 1150 !important;
+}

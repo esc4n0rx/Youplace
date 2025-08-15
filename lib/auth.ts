@@ -113,35 +113,6 @@ export async function getCurrentUser(): Promise<User | null> {
   }
 }
 
-export async function updateUserCredits(userId: string, newCredits: number): Promise<User | null> {
-  try {
-    console.log('💰 Atualizando créditos:', { userId, newCredits })
-    
-    // TODO: Implementar endpoint para atualizar créditos quando disponível na API
-    // Por enquanto, atualiza apenas no localStorage
-    const storedUserData = localStorage.getItem('user_data')
-    if (storedUserData) {
-      try {
-        const userData = JSON.parse(storedUserData) as User
-        if (userData.id === userId) {
-          const updatedUser = { ...userData, credits: newCredits, updatedAt: new Date().toISOString() }
-          localStorage.setItem('user_data', JSON.stringify(updatedUser))
-          console.log('✅ Créditos atualizados localmente:', updatedUser)
-          return updatedUser
-        }
-      } catch (error) {
-        console.error('❌ Erro ao atualizar créditos localmente:', error)
-      }
-    }
-    
-    console.log('⚠️ Atualização de créditos no backend não implementada ainda')
-    return null
-  } catch (error) {
-    console.error('❌ Erro na atualização de créditos:', error)
-    return null
-  }
-}
-
 // Função auxiliar para armazenar dados do usuário após login/registro
 export function storeUserData(user: User): void {
   try {

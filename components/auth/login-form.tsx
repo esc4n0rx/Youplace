@@ -40,8 +40,7 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
       
       toast({
         title: "Erro no login",
-        description: errorMessage,
-        variant: "destructive"
+        description: errorMessage
       })
     } finally {
       setLoading(false)

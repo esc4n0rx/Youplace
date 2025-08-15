@@ -55,8 +55,7 @@ export function AuthTabs({ onSuccess }: AuthTabsProps) {
             console.error('❌ Erro no login com Google:', error)
             toast({
               title: "Erro no login com Google",
-              description: error instanceof Error ? error.message : "Erro desconhecido",
-              variant: "destructive"
+              description: error instanceof Error ? error.message : "Erro desconhecido"
             })
           } finally {
             setGoogleLoading(false)
@@ -71,8 +70,7 @@ export function AuthTabs({ onSuccess }: AuthTabsProps) {
       console.error('❌ Erro ao inicializar Google OAuth:', error)
       toast({
         title: "Erro no login com Google",
-        description: "Não foi possível carregar o sistema de login do Google. Tente usar login com usuário/senha.",
-        variant: "destructive"
+        description: "Não foi possível carregar o sistema de login do Google. Tente usar login com usuário/senha."
       })
       setGoogleLoading(false)
     }

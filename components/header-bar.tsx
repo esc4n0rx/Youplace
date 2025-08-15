@@ -6,21 +6,22 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { LogOut, PaintBucket, Sparkles, MousePointer2, User } from "lucide-react"
+import { LogOut, PaintBucket, Sparkles, MousePointer2, User, Gift } from "lucide-react"
 import { HexColorPicker } from "react-colorful"
 import { readCurrentColor, setCurrentColor } from "@/lib/user-color"
-import { useCooldown } from "@/hooks/use-cooldown"
 import { setMode, getMode, type Mode, onModeChange } from "@/lib/mode"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
+import { useCredits } from "@/hooks/use-credits"
 import { LoginDialog } from "@/components/auth/login-dialog"
 
 export default function HeaderBar() {
   const { user, loading: authLoading, signOut } = useAuth()
+  const { credits, claimDailyBonus } = useCredits()
   const [color, setColor] = useState("#ff4d4f")
-  const { tokens, nextRefillSeconds, maxTokens } = useCooldown()
   const [mode, setModeState] = useState<Mode>("navigate")
   const [showLoginDialog, setShowLoginDialog] = useState(false)
+  const [bonusLoading, setBonusLoading] = useState(false)
 
   // Inicialização
   useEffect(() => {
@@ -88,6 +89,18 @@ export default function HeaderBar() {
     setCurrentColor(newColor)
   }, [])
 
+  const handleClaimBonus = useCallback(async () => {
+    setBonusLoading(true)
+    try {
+      await claimDailyBonus()
+    } finally {
+      setBonusLoading(false)
+    }
+  }, [claimDailyBonus])
+
+  // Usa créditos da API se disponível, senão usa do contexto de auth
+  const displayCredits = credits !== null ? credits : user?.credits || 0
+
   return (
     <>
       <header
@@ -148,12 +161,21 @@ export default function HeaderBar() {
                 <div className="hidden sm:flex items-center gap-2">
                   <Badge variant="secondary" className="flex items-center gap-1">
                     <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
-                    <span className="font-mono">{user.credits}</span>
+                    <span className="font-mono">{displayCredits}</span>
                     <span className="text-muted-foreground">créditos</span>
                   </Badge>
-                  {tokens <= 0 ? (
-                    <span className="text-xs text-muted-foreground">recarga em {Math.max(0, nextRefillSeconds)}s</span>
-                  ) : null}
+                  
+                  {/* Botão de bônus diário */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleClaimBonus}
+                    disabled={bonusLoading}
+                    className="gap-1"
+                  >
+                    <Gift className="h-3.5 w-3.5" />
+                    {bonusLoading ? "..." : "Bônus"}
+                  </Button>
                 </div>
               )}
 
@@ -289,7 +311,7 @@ export default function HeaderBar() {
               </Button>
             </div>
             
-            {/* Color picker para mobile */}
+            {/* Color picker e créditos para mobile */}
             <div className="flex items-center gap-2">
               <Popover>
                 <PopoverTrigger asChild>
@@ -330,10 +352,20 @@ export default function HeaderBar() {
               </Popover>
               
               {user && (
-                <Badge variant="secondary" className="flex items-center gap-1">
-                  <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
-                  <span className="font-mono">{user.credits}</span>
-                </Badge>
+                <div className="flex items-center gap-1">
+                  <Badge variant="secondary" className="flex items-center gap-1">
+                    <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
+                    <span className="font-mono">{displayCredits}</span>
+                  </Badge>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleClaimBonus}
+                    disabled={bonusLoading}
+                  >
+                    <Gift className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               )}
             </div>
           </div>

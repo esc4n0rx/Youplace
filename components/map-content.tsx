@@ -6,15 +6,15 @@ import { Rectangle } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
 import { useToast } from "@/hooks/use-toast"
 import { readCurrentColor } from "@/lib/user-color"
-import { useCooldown } from "@/hooks/use-cooldown"
-import { CELL_SIZE_DEG, originFromLatLng } from "@/lib/grid"
+import { CELL_SIZE_DEG, originFromLatLng, latLngToApiCoords, apiCoordsToLatLng } from "@/lib/grid"
 import { getMode, onModeChange, type Mode } from "@/lib/mode"
 import { cn } from "@/lib/utils"
 import { useTheme } from "next-themes"
 import { useAuth } from "@/hooks/use-auth"
+import { usePixels } from "@/hooks/use-pixels"
+import { useCredits } from "@/hooks/use-credits"
 import { MapWrapper } from "./map-wrapper"
-import { updateUserCredits } from "@/lib/auth"
-
+import type { PixelArea } from "@/types/pixel"
 
 // Fix para o Leaflet no Next.js
 import L from 'leaflet'
@@ -30,47 +30,24 @@ if (typeof window !== 'undefined') {
   })
 }
 
-export type PixelCell = {
-  id: string
-  lat: number
-  lng: number
-  size: number
-  color: string
-  updatedAt: number
-  userId: string
-  userName: string
-}
-
-const PIXELS_STORAGE_KEY = "rplace:pixels"
-
 export default function MapContent() {
-  const [cells, setCells] = useState<Record<string, PixelCell>>({})
   const [hoverCell, setHoverCell] = useState<{ lat: number; lng: number } | null>(null)
   const [mode, setModeState] = useState<Mode>("navigate")
   const [currentColor, setCurrentColor] = useState(readCurrentColor())
   const [isMapMounted, setIsMapMounted] = useState(false)
+  const [currentBounds, setCurrentBounds] = useState<L.LatLngBounds | null>(null)
+  
   const { toast } = useToast()
-  const { consumeToken, tokens } = useCooldown()
-  const { user, updateCredits: updateAuthCredits } = useAuth()
+  const { user } = useAuth()
   const { resolvedTheme } = useTheme()
+  const { pixels, loading: pixelsLoading, paintPixel, loadPixelsInArea } = usePixels()
+  const { credits, refreshCredits } = useCredits()
 
   // Inicialização
   useEffect(() => {
     // Define o modo e cor iniciais
     setModeState(getMode())
     setCurrentColor(readCurrentColor())
-    
-    // Carrega pixels do localStorage
-    try {
-      const stored = localStorage.getItem(PIXELS_STORAGE_KEY)
-      if (stored) {
-        const parsedCells = JSON.parse(stored)
-        setCells(parsedCells)
-        console.log("Loaded pixels from localStorage:", Object.keys(parsedCells).length)
-      }
-    } catch (error) {
-      console.error("Error parsing stored pixels:", error)
-    }
 
     // Aguarda um tick antes de montar o mapa para garantir que o DOM esteja pronto
     const timer = setTimeout(() => {
@@ -79,13 +56,6 @@ export default function MapContent() {
 
     return () => clearTimeout(timer)
   }, [])
-
-  // Salva pixels no localStorage sempre que mudar
-  useEffect(() => {
-    if (Object.keys(cells).length > 0) {
-      localStorage.setItem(PIXELS_STORAGE_KEY, JSON.stringify(cells))
-    }
-  }, [cells])
 
   // Listener para mudanças de modo e cor
   useEffect(() => {
@@ -99,11 +69,44 @@ export default function MapContent() {
     }
   }, [])
 
+  // Carrega pixels quando os bounds do mapa mudam
+  useEffect(() => {
+    if (!currentBounds) return
+
+    const loadPixelsForBounds = async () => {
+      const sw = currentBounds.getSouthWest()
+      const ne = currentBounds.getNorthEast()
+      
+      // Converte bounds para coordenadas da API
+      const { x: minX, y: minY } = latLngToApiCoords(sw.lat, sw.lng)
+      const { x: maxX, y: maxY } = latLngToApiCoords(ne.lat, ne.lng)
+      
+      // Limita a área máxima para não sobrecarregar a API (100x100)
+      const areaWidth = maxX - minX
+      const areaHeight = maxY - minY
+      
+      if (areaWidth > 100 || areaHeight > 100) {
+        console.log('⚠️ Área muito grande, não carregando pixels')
+        return
+      }
+
+      const area: PixelArea = { minX, maxX, minY, maxY }
+      
+      try {
+        await loadPixelsInArea(area)
+      } catch (error) {
+        console.error('❌ Erro ao carregar pixels para bounds:', error)
+      }
+    }
+
+    loadPixelsForBounds()
+  }, [currentBounds, loadPixelsInArea])
+
   // Função de pintura
   const paintAtLatLng = useCallback(async (lat: number, lng: number) => {
     const { lat: cellLat, lng: cellLng } = originFromLatLng(lat, lng)
 
-    console.log("🎨 Tentando pintar pixel em:", { lat: cellLat, lng: cellLng, mode, tokens, user: !!user })
+    console.log("🎨 Tentando pintar pixel em:", { lat: cellLat, lng: cellLng, mode, user: !!user })
     
     if (mode !== "paint") {
       console.log("❌ Não está no modo pintura")
@@ -114,82 +117,18 @@ export default function MapContent() {
       console.log("🔐 Usuário não autenticado, exibindo toast.")
       toast({
         title: "Login necessário",
-        description: "Você precisa fazer login para pintar. Use o botão 'Entrar' no cabeçalho.",
-        variant: "destructive"
+        description: "Você precisa fazer login para pintar. Use o botão 'Entrar' no cabeçalho."
       })
       return
     }
     
-    if (tokens <= 0) {
-      toast({
-        title: "Sem tokens disponíveis",
-        description: "Aguarde o cooldown para pintar novamente",
-        variant: "destructive"
-      })
-      return
+    const success = await paintPixel(cellLat, cellLng, readCurrentColor())
+    
+    if (success) {
+      // Atualiza créditos após pintura bem-sucedida
+      refreshCredits()
     }
-    
-    if (user.credits <= 0) {
-      toast({
-        title: "Sem créditos",
-        description: "Você não tem créditos suficientes para pintar",
-        variant: "destructive"
-      })
-      return
-    }
-    
-    // Consome um token
-    consumeToken()
-
-    const newCredits = user.credits - 1;
-    
-    // Atualiza créditos no banco de dados e depois no estado local
-    try {
-      const updatedUser = await updateUserCredits(user.id, newCredits);
-      if (updatedUser) {
-        // Atualiza o estado local do AuthContext
-        updateAuthCredits(updatedUser.credits);
-
-        // Calcula o ID único da célula
-        const cellId = `${cellLat.toFixed(6)}_${cellLng.toFixed(6)}`
-        
-        // Cria ou atualiza a célula
-        const newCell: PixelCell = {
-          id: cellId,
-          lat: cellLat,
-          lng: cellLng,
-          size: CELL_SIZE_DEG,
-          color: readCurrentColor(),
-          updatedAt: Date.now(),
-          userId: user.id,
-          userName: user.name || user.email || 'Usuário'
-        }
-        
-        setCells(prev => ({
-          ...prev,
-          [cellId]: newCell
-        }))
-        
-        toast({
-          title: "Pixel pintado!",
-          description: `Pintado em ${cellLat.toFixed(4)}, ${cellLng.toFixed(4)}`,
-        })
-        
-        console.log("✅ Pixel pintado com sucesso:", newCell)
-      } else {
-        throw new Error("Falha ao atualizar os créditos do usuário no banco.")
-      }
-    } catch (error) {
-      console.error("❌ Erro ao tentar pintar e atualizar créditos:", error);
-      toast({
-        title: "Erro ao pintar",
-        description: "Não foi possível salvar sua pintura. Tente novamente.",
-        variant: "destructive",
-      });
-      // Reverte o consumo do token se a operação falhar? (Opcional)
-    }
-    
-  }, [mode, tokens, user, consumeToken, updateAuthCredits, toast])
+  }, [mode, user, paintPixel, refreshCredits, toast])
 
   const handleHover = useCallback((lat: number, lng: number) => {
     if (mode === "paint") {
@@ -200,36 +139,31 @@ export default function MapContent() {
     }
   }, [mode]);
 
-  const clearAllPixels = () => {
-    setCells({})
-    localStorage.removeItem(PIXELS_STORAGE_KEY)
-    toast({
-      title: "Pixels limpos",
-      description: "Todos os pixels foram removidos",
-    })
-  }
-
   const isDark = resolvedTheme === 'dark'
 
-  // Gera retângulos para cada célula - memoizado para evitar recriações desnecessárias
-  const rectangles = useMemo(() => 
-    Object.values(cells).map(cell => (
-      <Rectangle
-        key={cell.id}
-        bounds={[
-          [cell.lat, cell.lng],
-          [cell.lat + CELL_SIZE_DEG, cell.lng + CELL_SIZE_DEG]
-        ]}
-        pathOptions={{
-          fillColor: cell.color,
-          color: 'transparent',
-          fillOpacity: 1, // Opacidade máxima para cor sólida
-          weight: 0
-        }}
-        interactive={false}
-      />
-    )), [cells]
-  )
+  // Gera retângulos para cada célula pintada
+  const rectangles = useMemo(() => {
+    return Object.values(pixels).map(pixel => {
+      const { lat, lng } = apiCoordsToLatLng(pixel.x, pixel.y)
+      
+      return (
+        <Rectangle
+          key={pixel.id}
+          bounds={[
+            [lat, lng],
+            [lat + CELL_SIZE_DEG, lng + CELL_SIZE_DEG]
+          ]}
+          pathOptions={{
+            fillColor: pixel.color,
+            color: 'transparent',
+            fillOpacity: 1,
+            weight: 0
+          }}
+          interactive={false}
+        />
+      )
+    })
+  }, [pixels])
 
   // Retângulo de hover - memoizado
   const hoverRect = useMemo(() => 
@@ -253,6 +187,11 @@ export default function MapContent() {
     [hoverCell, mode, currentColor, isDark]
   )
 
+  // Callback para atualizar bounds do mapa
+  const handleBoundsChange = useCallback((bounds: L.LatLngBounds) => {
+    setCurrentBounds(bounds)
+  }, [])
+
   // Não renderiza o mapa até estar pronto
   if (!isMapMounted) {
     return (
@@ -269,12 +208,12 @@ export default function MapContent() {
     <div className={cn("relative h-full w-full bg-background")}>
       {/* Botões de debug */}
       {process.env.NODE_ENV === 'development' && (
-        <div className="absolute top-2 right-2 z-[1000] flex gap-2">
+        <div className="absolute top-2 right-2 z-[1000] flex gap-2 map-overlay">
           <button
-            onClick={clearAllPixels}
-            className="bg-red-500 text-white px-2 py-1 rounded text-xs hover:bg-red-600"
+            onClick={() => refreshCredits()}
+            className="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600"
           >
-            Limpar Pixels
+            Refresh Créditos
           </button>
         </div>
       )}
@@ -288,6 +227,7 @@ export default function MapContent() {
         mode={mode}
         onPaint={paintAtLatLng}
         onHover={handleHover}
+        onBoundsChange={handleBoundsChange}
         rectangles={rectangles}
         hoverRect={hoverRect}
         className={cn(
@@ -296,45 +236,57 @@ export default function MapContent() {
         )}
       />
 
-      {/* Interface do modo pintura */}
-      {mode === "paint" && (
-        <div className="pointer-events-none absolute left-4 bottom-4 z-[500]">
+      {/* Loading indicator */}
+      {pixelsLoading && (
+        <div className="pointer-events-none absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[900] map-overlay">
           <div className="bg-background/95 backdrop-blur rounded-lg border shadow-lg p-3">
-            <div className="flex items-center gap-3">
-              <div 
-                className="w-6 h-6 rounded border-2 border-white shadow-sm" 
-                style={{ backgroundColor: currentColor }}
-              />
-              <div>
-                <div className="font-medium text-sm">
-                  {user ? "Modo Pintura" : "Login Necessário"}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {user ? (
-                    <>Créditos: <span className="font-mono font-bold text-foreground">{user.credits}</span></>
-                  ) : (
-                    "Faça login para pintar"
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="text-xs text-muted-foreground mt-2">
-              {user ? "Clique no mapa para pintar pixels" : "Entre com sua conta Google"}
+            <div className="flex items-center gap-2">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+              <div className="text-sm">Carregando pixels...</div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Contador de pixels */}
-      <div className="pointer-events-none absolute right-4 top-4 z-[500]">
-        <div className="bg-background/95 backdrop-blur rounded-lg border shadow-lg px-3 py-2">
-          <div className="text-xs text-muted-foreground">
-            Pixels pintados: <span className="font-mono font-bold text-foreground">
-              {Object.keys(cells).length}
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
+      {/* Interface do modo pintura */}
+      {mode === "paint" && (
+        <div className="pointer-events-none absolute left-4 bottom-4 z-[900] map-overlay">
+          <div className="bg-background/95 backdrop-blur rounded-lg border shadow-lg p-3">
+            <div className="flex items-center gap-3">
+              <div 
+                className="w-6 h-6 rounded border-2 border-white shadow-sm" 
+               style={{ backgroundColor: currentColor }}
+             />
+             <div>
+               <div className="font-medium text-sm">
+                 {user ? "Modo Pintura" : "Login Necessário"}
+               </div>
+               <div className="text-xs text-muted-foreground">
+                 {user ? (
+                   <>Créditos: <span className="font-mono font-bold text-foreground">{credits !== null ? credits : user.credits}</span></>
+                 ) : (
+                   "Faça login para pintar"
+                 )}
+               </div>
+             </div>
+           </div>
+           <div className="text-xs text-muted-foreground mt-2">
+             {user ? "Clique no mapa para pintar pixels" : "Entre com sua conta Google"}
+           </div>
+         </div>
+       </div>
+     )}
+
+     {/* Contador de pixels */}
+     <div className="pointer-events-none absolute right-4 top-4 z-[900] map-overlay">
+       <div className="bg-background/95 backdrop-blur rounded-lg border shadow-lg px-3 py-2">
+         <div className="text-xs text-muted-foreground">
+           Pixels carregados: <span className="font-mono font-bold text-foreground">
+             {Object.keys(pixels).length}
+           </span>
+         </div>
+       </div>
+     </div>
+   </div>
+ )
 }
