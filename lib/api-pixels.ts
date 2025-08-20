@@ -4,7 +4,7 @@
 import type { Pixel, PixelArea, UserStats, CreditTransaction, Coordinates } from '@/types/pixel'
 import { apiAuth } from './api-auth'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://api.youplace.space/api/v1'
 
 export interface PaintPixelRequest {
   x: number
@@ -83,21 +83,65 @@ class ApiPixelsClient {
   ): Promise<T> {
     const url = `${API_BASE_URL}${endpoint}`
     
-    const response = await fetch(url, {
+    console.log('🌐 Fazendo requisição de pixels para:', url)
+    
+    const requestOptions: RequestInit = {
+      method: 'GET',
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
         ...this.getAuthHeaders(),
         ...options.headers,
       },
+      credentials: 'omit', // Importante para CORS
+      mode: 'cors', // Explicitamente definir modo CORS
       ...options,
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.error || `HTTP ${response.status}`)
     }
 
-    return response.json()
+    console.log('🔧 Opções da requisição de pixels:', {
+      url,
+      method: requestOptions.method,
+      headers: requestOptions.headers,
+      credentials: requestOptions.credentials,
+      mode: requestOptions.mode
+    })
+
+    try {
+      const response = await fetch(url, requestOptions)
+
+      console.log('📡 Resposta de pixels recebida:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries())
+      })
+
+      if (!response.ok) {
+        let errorData: any = {}
+        try {
+          errorData = await response.json()
+        } catch (parseError) {
+          console.error('❌ Erro ao parsear resposta de erro de pixels:', parseError)
+          errorData = { error: `HTTP ${response.status}: ${response.statusText}` }
+        }
+        
+        console.error('❌ Erro na resposta de pixels:', errorData)
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      console.log('✅ Dados de pixels recebidos:', data)
+      return data
+    } catch (error) {
+      console.error('❌ Erro na requisição de pixels:', error)
+      
+      // Tratamento específico para erros de CORS
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        console.error('🚫 Possível erro de CORS ou conectividade em pixels')
+        throw new Error('Erro de conectividade com API de pixels. Verifique se a API está rodando e se há problemas de CORS.')
+      }
+      
+      throw error
+    }
   }
 
   async paintPixel(data: PaintPixelRequest): Promise<PaintPixelResponse> {
