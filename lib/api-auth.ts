@@ -164,7 +164,9 @@ class ApiAuthClient {
 
   async healthCheck(): Promise<boolean> {
     try {
+      console.log('🏥 Verificando saúde da API...')
       await this.request('/health')
+      console.log('✅ API está saudável')
       return true
     } catch (error) {
       return false
