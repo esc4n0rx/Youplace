@@ -14,14 +14,16 @@ import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
 import { useCredits } from "@/hooks/use-credits"
 import { LoginDialog } from "@/components/auth/login-dialog"
+import { ErrorCard } from "@/components/ui/error-card"
 
 export default function HeaderBar() {
   const { user, loading: authLoading, signOut } = useAuth()
-  const { credits, claimDailyBonus } = useCredits()
+  const { credits, claimDailyBonus, error: creditsError } = useCredits()
   const [color, setColor] = useState("#ff4d4f")
   const [mode, setModeState] = useState<Mode>("navigate")
   const [showLoginDialog, setShowLoginDialog] = useState(false)
   const [bonusLoading, setBonusLoading] = useState(false)
+  const [showCreditsError, setShowCreditsError] = useState(false)
 
   // Inicialização
   useEffect(() => {
@@ -30,9 +32,6 @@ export default function HeaderBar() {
     // Carrega valores iniciais
     const initialColor = readCurrentColor()
     const initialMode = getMode()
-    
-    console.log("🎨 Cor inicial:", initialColor)
-    console.log("🔄 Modo inicial:", initialMode)
     
     setColor(initialColor)
     setModeState(initialMode)
@@ -44,7 +43,6 @@ export default function HeaderBar() {
     
     const onColorChange = () => {
       const newColor = readCurrentColor()
-      console.log("🎨 Cor alterada via evento:", newColor)
       setColor(newColor)
     }
     
@@ -57,11 +55,17 @@ export default function HeaderBar() {
     if (typeof window === "undefined") return
     
     const unsubscribe = onModeChange((newMode) => {
-      console.log("🔄 Modo alterado via evento:", newMode)
       setModeState(newMode)
     })
     return unsubscribe
   }, [])
+
+  // Mostra erro de créditos se houver
+  useEffect(() => {
+    if (creditsError) {
+      setShowCreditsError(true)
+    }
+  }, [creditsError])
 
   const initials = useMemo(() => {
     if (!user?.username) return "?"
@@ -71,7 +75,6 @@ export default function HeaderBar() {
   }, [user?.username])
 
   const switchMode = useCallback((next: Mode) => {
-    console.log("🔄 Alterando modo:", next)
     setMode(next)
   }, [])
 
@@ -84,7 +87,6 @@ export default function HeaderBar() {
   }
 
   const handleColorChange = useCallback((newColor: string) => {
-    console.log("🎨 Usuário selecionou cor:", newColor)
     setColor(newColor)
     setCurrentColor(newColor)
   }, [])
@@ -103,12 +105,25 @@ export default function HeaderBar() {
 
   return (
     <>
+      {/* Erro de créditos fixo no topo */}
+      {showCreditsError && creditsError && (
+        <div className="fixed top-0 left-0 right-0 z-[1300] p-4">
+          <ErrorCard
+            title="Erro ao carregar créditos"
+            message={creditsError}
+            onDismiss={() => setShowCreditsError(false)}
+            className="max-w-md mx-auto"
+          />
+        </div>
+      )}
+
       <header
         className={cn(
           "fixed top-0 left-0 right-0 z-50",
           "bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/60",
           "dark:bg-neutral-900/60 supports-[backdrop-filter]:dark:bg-neutral-900/50",
           "border-b",
+          showCreditsError && creditsError ? "mt-20" : ""
         )}
         role="banner"
         aria-label="Barra superior do app"

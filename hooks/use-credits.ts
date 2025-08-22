@@ -1,7 +1,7 @@
 // hooks/use-credits.ts
 "use client"
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { apiPixels } from '@/lib/api-pixels'
 import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/hooks/use-toast'
@@ -22,6 +22,13 @@ export function useCredits(): UseCreditsReturn {
   const [error, setError] = useState<string | null>(null)
   const { user, updateCredits: updateAuthCredits } = useAuth()
   const { toast } = useToast()
+  
+  // Ref para evitar requests duplicadas
+  const refreshingRef = useRef(false)
+  const lastRefreshTime = useRef(0)
+  
+  // Debounce de 5 segundos para evitar requests muito frequentes
+  const REFRESH_DEBOUNCE_MS = 5000
 
   const refreshCredits = useCallback(async () => {
     if (!user) {
@@ -29,6 +36,19 @@ export function useCredits(): UseCreditsReturn {
       return
     }
 
+    // Evita requests duplicadas
+    if (refreshingRef.current) {
+      return
+    }
+
+    // Debounce - evita requests muito frequentes
+    const now = Date.now()
+    if (now - lastRefreshTime.current < REFRESH_DEBOUNCE_MS) {
+      return
+    }
+
+    refreshingRef.current = true
+    lastRefreshTime.current = now
     setLoading(true)
     setError(null)
 
@@ -46,6 +66,7 @@ export function useCredits(): UseCreditsReturn {
       console.error('❌ Erro ao buscar créditos:', err)
     } finally {
       setLoading(false)
+      refreshingRef.current = false
     }
   }, [user, updateAuthCredits])
 
@@ -97,15 +118,23 @@ export function useCredits(): UseCreditsReturn {
     }
   }, [user])
 
-  // Carrega créditos quando usuário muda
+  // Carrega créditos apenas quando usuário muda (não em cada render)
   useEffect(() => {
     if (user) {
-      refreshCredits()
+      // Usa apenas os créditos do contexto de auth inicialmente
+      if (user.credits !== undefined) {
+        setCredits(user.credits)
+      }
+      // Faz refresh apenas se não temos créditos ou se passou tempo suficiente
+      if (credits === null || Date.now() - lastRefreshTime.current > 30000) {
+        refreshCredits()
+      }
     } else {
       setCredits(null)
       setError(null)
+      refreshingRef.current = false
     }
-  }, [user, refreshCredits])
+  }, [user?.id]) // Depend apenas do ID do usuário
 
   return {
     credits,

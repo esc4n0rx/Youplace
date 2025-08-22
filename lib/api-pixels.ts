@@ -4,7 +4,8 @@
 import type { Pixel, PixelArea, UserStats, CreditTransaction, Coordinates } from '@/types/pixel'
 import { apiAuth } from './api-auth'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://api.youplace.space/api/v1'
+const DEBUG_MODE = process.env.NODE_ENV === 'development'
 
 export interface PaintPixelRequest {
   x: number
@@ -83,25 +84,63 @@ class ApiPixelsClient {
   ): Promise<T> {
     const url = `${API_BASE_URL}${endpoint}`
     
-    const response = await fetch(url, {
+    // Log apenas em desenvolvimento e para operações importantes
+    if (DEBUG_MODE && !endpoint.includes('/credits')) {
+      console.log('🌐 API Pixels request:', endpoint)
+    }
+    
+    const requestOptions: RequestInit = {
+      method: 'GET',
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
         ...this.getAuthHeaders(),
         ...options.headers,
       },
+      credentials: 'omit',
+      mode: 'cors',
       ...options,
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.error || `HTTP ${response.status}`)
     }
 
-    return response.json()
+    try {
+      const response = await fetch(url, requestOptions)
+
+      if (!response.ok) {
+        let errorData: any = {}
+        try {
+          errorData = await response.json()
+        } catch (parseError) {
+          errorData = { error: `HTTP ${response.status}: ${response.statusText}` }
+        }
+        
+        console.error('❌ Erro na API de pixels:', errorData)
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      
+      // Log apenas para operações importantes (não para créditos)
+      if (DEBUG_MODE && !endpoint.includes('/credits')) {
+        console.log('✅ Resposta da API de pixels:', endpoint, data)
+      }
+      
+      return data
+    } catch (error) {
+      if (DEBUG_MODE) {
+        console.error('❌ Erro na requisição de pixels:', endpoint, error)
+      }
+      
+      // Tratamento específico para erros de CORS
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        throw new Error('Erro de conectividade com API de pixels. Verifique se a API está rodando.')
+      }
+      
+      throw error
+    }
   }
 
   async paintPixel(data: PaintPixelRequest): Promise<PaintPixelResponse> {
-    console.log('🎨 Pintando pixel via API:', data)
+    console.log('🎨 Pintando pixel:', data)
     return this.request<PaintPixelResponse>('/pixels/paint', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -116,29 +155,24 @@ class ApiPixelsClient {
       maxY: area.maxY.toString(),
     })
     
-    console.log('🔍 Buscando pixels por área:', area)
     return this.request<GetPixelsByAreaResponse>(`/pixels/area?${params}`)
   }
 
   async getPixelInfo(x: number, y: number): Promise<GetPixelInfoResponse> {
-    console.log('ℹ️ Buscando info do pixel:', { x, y })
     return this.request<GetPixelInfoResponse>(`/pixels/${x}/${y}`)
   }
 
   async getPixelHistory(x: number, y: number, limit: number = 5): Promise<GetPixelHistoryResponse> {
     const params = new URLSearchParams({ limit: limit.toString() })
-    console.log('📜 Buscando histórico do pixel:', { x, y, limit })
     return this.request<GetPixelHistoryResponse>(`/pixels/${x}/${y}/history?${params}`)
   }
 
   async getUserStats(timeframe: '24h' | '7d' | 'all' = '24h'): Promise<GetUserStatsResponse> {
     const params = new URLSearchParams({ timeframe })
-    console.log('📊 Buscando estatísticas do usuário:', timeframe)
     return this.request<GetUserStatsResponse>(`/pixels/user/stats?${params}`)
   }
 
   async getCredits(): Promise<GetCreditsResponse> {
-    console.log('💰 Buscando créditos do usuário')
     return this.request<GetCreditsResponse>('/credits')
   }
 
@@ -151,7 +185,6 @@ class ApiPixelsClient {
 
   async getCreditHistory(limit: number = 10): Promise<GetCreditHistoryResponse> {
     const params = new URLSearchParams({ limit: limit.toString() })
-    console.log('📋 Buscando histórico de créditos:', limit)
     return this.request<GetCreditHistoryResponse>(`/credits/history?${params}`)
   }
 }

@@ -14,6 +14,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { usePixels } from "@/hooks/use-pixels"
 import { useCredits } from "@/hooks/use-credits"
 import { MapWrapper } from "./map-wrapper"
+import { ErrorCard } from "@/components/ui/error-card"
 import type { PixelArea } from "@/types/pixel"
 
 // Fix para o Leaflet no Next.js
@@ -36,11 +37,12 @@ export default function MapContent() {
   const [currentColor, setCurrentColor] = useState(readCurrentColor())
   const [isMapMounted, setIsMapMounted] = useState(false)
   const [currentBounds, setCurrentBounds] = useState<L.LatLngBounds | null>(null)
+  const [mapError, setMapError] = useState<string | null>(null)
   
   const { toast } = useToast()
   const { user } = useAuth()
   const { resolvedTheme } = useTheme()
-  const { pixels, loading: pixelsLoading, paintPixel, loadPixelsInArea } = usePixels()
+  const { pixels, loading: pixelsLoading, error: pixelsError, paintPixel, loadPixelsInArea } = usePixels()
   const { credits, refreshCredits } = useCredits()
 
   // Inicialização
@@ -74,27 +76,30 @@ export default function MapContent() {
     if (!currentBounds) return
 
     const loadPixelsForBounds = async () => {
-      const sw = currentBounds.getSouthWest()
-      const ne = currentBounds.getNorthEast()
-      
-      // Converte bounds para coordenadas da API
-      const { x: minX, y: minY } = latLngToApiCoords(sw.lat, sw.lng)
-      const { x: maxX, y: maxY } = latLngToApiCoords(ne.lat, ne.lng)
-      
-      // Limita a área máxima para não sobrecarregar a API (100x100)
-      const areaWidth = maxX - minX
-      const areaHeight = maxY - minY
-      
-      if (areaWidth > 100 || areaHeight > 100) {
-        console.log('⚠️ Área muito grande, não carregando pixels')
-        return
-      }
-
-      const area: PixelArea = { minX, maxX, minY, maxY }
-      
       try {
+        const sw = currentBounds.getSouthWest()
+        const ne = currentBounds.getNorthEast()
+        
+        // Converte bounds para coordenadas da API
+        const { x: minX, y: minY } = latLngToApiCoords(sw.lat, sw.lng)
+        const { x: maxX, y: maxY } = latLngToApiCoords(ne.lat, ne.lng)
+        
+        // Limita a área máxima para não sobrecarregar a API (100x100)
+        const areaWidth = maxX - minX
+        const areaHeight = maxY - minY
+        
+        if (areaWidth > 100 || areaHeight > 100) {
+          return
+        }
+
+        const area: PixelArea = { minX, maxX, minY, maxY }
         await loadPixelsInArea(area)
+        
+        // Limpa erro se carregou com sucesso
+        setMapError(null)
       } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Erro ao carregar pixels'
+        setMapError(errorMessage)
         console.error('❌ Erro ao carregar pixels para bounds:', error)
       }
     }
@@ -104,29 +109,37 @@ export default function MapContent() {
 
   // Função de pintura
   const paintAtLatLng = useCallback(async (lat: number, lng: number) => {
-    const { lat: cellLat, lng: cellLng } = originFromLatLng(lat, lng)
+    try {
+      const { lat: cellLat, lng: cellLng } = originFromLatLng(lat, lng)
 
-    console.log("🎨 Tentando pintar pixel em:", { lat: cellLat, lng: cellLng, mode, user: !!user })
-    
-    if (mode !== "paint") {
-      console.log("❌ Não está no modo pintura")
-      return
-    }
-    
-    if (!user) {
-      console.log("🔐 Usuário não autenticado, exibindo toast.")
+      if (mode !== "paint") {
+        return
+      }
+      
+      if (!user) {
+        toast({
+          title: "Login necessário",
+          description: "Você precisa fazer login para pintar. Use o botão 'Entrar' no cabeçalho."
+        })
+        return
+      }
+      
+      const success = await paintPixel(cellLat, cellLng, readCurrentColor())
+      
+      if (success) {
+        // Atualiza créditos após pintura bem-sucedida
+        refreshCredits()
+        // Limpa erro se pintou com sucesso
+        setMapError(null)
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Erro ao pintar pixel'
+      setMapError(errorMessage)
       toast({
-        title: "Login necessário",
-        description: "Você precisa fazer login para pintar. Use o botão 'Entrar' no cabeçalho."
+        title: "Erro ao pintar",
+        description: errorMessage,
+        variant: "destructive"
       })
-      return
-    }
-    
-    const success = await paintPixel(cellLat, cellLng, readCurrentColor())
-    
-    if (success) {
-      // Atualiza créditos após pintura bem-sucedida
-      refreshCredits()
     }
   }, [mode, user, paintPixel, refreshCredits, toast])
 
@@ -206,7 +219,22 @@ export default function MapContent() {
 
   return (
     <div className={cn("relative h-full w-full bg-background")}>
-      {/* Botões de debug */}
+      {/* Erros de pixels/mapa */}
+      {(mapError || pixelsError) && (
+        <div className="absolute top-4 left-4 right-4 z-[1000] map-overlay">
+          <ErrorCard
+            title="Erro no mapa"
+            message={mapError || pixelsError || "Erro desconhecido"}
+            onDismiss={() => {
+              setMapError(null)
+              // Note: pixelsError é controlado pelo hook usePixels
+            }}
+            className="max-w-md"
+          />
+        </div>
+      )}
+
+      {/* Botões de debug - apenas em desenvolvimento */}
       {process.env.NODE_ENV === 'development' && (
         <div className="absolute top-2 right-2 z-[1000] flex gap-2 map-overlay">
           <button
@@ -214,6 +242,15 @@ export default function MapContent() {
             className="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600"
           >
             Refresh Créditos
+          </button>
+          <button
+            onClick={() => {
+              setMapError(null)
+              console.clear()
+            }}
+            className="bg-red-500 text-white px-2 py-1 rounded text-xs hover:bg-red-600"
+          >
+            Limpar Erros
           </button>
         </div>
       )}
@@ -271,7 +308,7 @@ export default function MapContent() {
              </div>
            </div>
            <div className="text-xs text-muted-foreground mt-2">
-             {user ? "Clique no mapa para pintar pixels" : "Entre com sua conta Google"}
+             {user ? "Clique no mapa para pintar pixels" : "Entre com sua conta"}
            </div>
          </div>
        </div>

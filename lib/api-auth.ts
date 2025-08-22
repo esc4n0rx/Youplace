@@ -3,7 +3,8 @@
 
 import type { User } from '@/types/auth'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://api.youplace.space/api/v1'
+const DEBUG_MODE = process.env.NODE_ENV === 'development'
 
 export interface LoginRequest {
   username: string
@@ -48,26 +49,62 @@ class ApiAuthClient {
     options: RequestInit = {}
   ): Promise<T> {
     const url = `${API_BASE_URL}${endpoint}`
-    
-    const response = await fetch(url, {
+    const requestOptions: RequestInit = {
+      method: 'GET',
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
         ...this.getAuthHeaders(),
         ...options.headers,
       },
+      credentials: 'omit', 
+      mode: 'cors',
       ...options,
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.error || `HTTP ${response.status}`)
     }
 
-    return response.json()
+    // Log apenas em desenvolvimento e para operações importantes
+    if (DEBUG_MODE && (endpoint.includes('/auth/') || endpoint.includes('/health'))) {
+      console.log('🔧 API Auth request:', endpoint)
+    }
+
+    try {
+      const response = await fetch(url, requestOptions)
+
+      if (!response.ok) {
+        let errorData: any = {}
+        try {
+          errorData = await response.json()
+        } catch (parseError) {
+          errorData = { error: `HTTP ${response.status}: ${response.statusText}` }
+        }
+        
+        console.error('❌ Erro na API de auth:', errorData)
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      
+      if (DEBUG_MODE && (endpoint.includes('/auth/') || endpoint.includes('/health'))) {
+        console.log('✅ Resposta da API de auth:', endpoint)
+      }
+      
+      return data
+    } catch (error) {
+      if (DEBUG_MODE) {
+        console.error('❌ Erro na requisição de auth:', endpoint, error)
+      }
+      
+      // Tratamento específico para erros de CORS
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        throw new Error('Erro de conectividade. Verifique se a API está rodando.')
+      }
+      
+      throw error
+    }
   }
 
   async register(data: RegisterRequest): Promise<AuthResponse> {
-    console.log('🚀 Registrando usuário via API...')
+    console.log('🚀 Registrando usuário...')
     const response = await this.request<AuthResponse>('/auth/register', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -81,7 +118,7 @@ class ApiAuthClient {
   }
 
   async login(data: LoginRequest): Promise<AuthResponse> {
-    console.log('🔑 Fazendo login via API...')
+    console.log('🔑 Fazendo login...')
     const response = await this.request<AuthResponse>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -95,7 +132,7 @@ class ApiAuthClient {
   }
 
   async googleAuth(idToken: string): Promise<AuthResponse> {
-    console.log('🔑 Fazendo login com Google via API...')
+    console.log('🔑 Fazendo login com Google...')
     const response = await this.request<AuthResponse>('/auth/google', {
       method: 'POST',
       body: JSON.stringify({ idToken }),
@@ -113,7 +150,6 @@ class ApiAuthClient {
       const token = this.getToken()
       if (!token) return null
 
-      console.log('👤 Buscando usuário atual via API...')
       const response = await this.request<{
         success: boolean
         data: { userId: string; username: string }
@@ -121,7 +157,6 @@ class ApiAuthClient {
       
       return response.success ? response.data : null
     } catch (error) {
-      console.error('❌ Erro ao buscar usuário atual:', error)
       this.removeToken()
       return null
     }
@@ -132,7 +167,6 @@ class ApiAuthClient {
       await this.request('/health')
       return true
     } catch (error) {
-      console.error('❌ Health check falhou:', error)
       return false
     }
   }
@@ -144,11 +178,13 @@ class ApiAuthClient {
 
   setToken(token: string): void {
     if (typeof window === 'undefined') return
+    if (DEBUG_MODE) console.log('💾 Salvando token de autenticação')
     localStorage.setItem('auth_token', token)
   }
 
   removeToken(): void {
     if (typeof window === 'undefined') return
+    if (DEBUG_MODE) console.log('🗑️ Removendo token de autenticação')
     localStorage.removeItem('auth_token')
   }
 
