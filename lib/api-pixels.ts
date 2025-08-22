@@ -3,6 +3,7 @@
 
 import type { Pixel, PixelArea, UserStats, CreditTransaction, Coordinates } from '@/types/pixel'
 import { apiAuth } from './api-auth'
+import { validateHexColor, normalizeColor } from './grid'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://api.youplace.space/api/v1'
 const DEBUG_MODE = process.env.NODE_ENV === 'development'
@@ -72,6 +73,32 @@ export interface GetCreditHistoryResponse {
   }
 }
 
+// Função para validar dados de pintura
+function validatePaintPixelData(data: PaintPixelRequest): { valid: boolean; errors: string[] } {
+  const errors: string[] = []
+  
+  // Validar coordenadas
+  if (!Number.isInteger(data.x) || data.x < 0 || data.x > 3600000) {
+    errors.push(`Coordenada X inválida: ${data.x} (deve ser inteiro entre 0 e 3600000)`)
+  }
+  
+  if (!Number.isInteger(data.y) || data.y < 0 || data.y > 1800000) {
+    errors.push(`Coordenada Y inválida: ${data.y} (deve ser inteiro entre 0 e 1800000)`)
+  }
+  
+  // Validar cor
+  if (!data.color || typeof data.color !== 'string') {
+    errors.push(`Cor inválida: ${data.color} (deve ser string)`)
+  } else if (!validateHexColor(data.color)) {
+    errors.push(`Formato de cor inválido: ${data.color} (deve ser #RRGGBB)`)
+  }
+  
+  return {
+    valid: errors.length === 0,
+    errors
+  }
+}
+
 class ApiPixelsClient {
   private getAuthHeaders(): Record<string, string> {
     const token = apiAuth.getToken()
@@ -86,7 +113,7 @@ class ApiPixelsClient {
     
     // Log apenas em desenvolvimento e para operações importantes
     if (DEBUG_MODE && !endpoint.includes('/credits')) {
-      console.log('🌐 API Pixels request:', endpoint)
+      console.log('🌐 API Pixels request:', endpoint, options.method || 'GET')
     }
     
     const requestOptions: RequestInit = {
@@ -113,8 +140,14 @@ class ApiPixelsClient {
           errorData = { error: `HTTP ${response.status}: ${response.statusText}` }
         }
         
-        console.error('❌ Erro na API de pixels:', errorData)
-        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`)
+        console.error('❌ Erro na API de pixels:', {
+          endpoint,
+          status: response.status,
+          errorData,
+          requestBody: options.body
+        })
+        
+        throw new Error(errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`)
       }
 
       const data = await response.json()
@@ -126,9 +159,11 @@ class ApiPixelsClient {
       
       return data
     } catch (error) {
-      if (DEBUG_MODE) {
-        console.error('❌ Erro na requisição de pixels:', endpoint, error)
-      }
+      console.error('❌ Erro na requisição de pixels:', {
+        endpoint,
+        error: error instanceof Error ? error.message : error,
+        requestBody: options.body
+      })
       
       // Tratamento específico para erros de CORS
       if (error instanceof TypeError && error.message.includes('fetch')) {
@@ -140,10 +175,27 @@ class ApiPixelsClient {
   }
 
   async paintPixel(data: PaintPixelRequest): Promise<PaintPixelResponse> {
-    console.log('🎨 Pintando pixel:', data)
+    console.log('🎨 Validando dados para pintura:', data)
+    
+    // Normalizar cor
+    const normalizedData = {
+      ...data,
+      color: normalizeColor(data.color)
+    }
+    
+    // Validar dados antes de enviar
+    const validation = validatePaintPixelData(normalizedData)
+    if (!validation.valid) {
+      const errorMessage = `Dados inválidos para pintura: ${validation.errors.join(', ')}`
+      console.error('❌ Validação falhou:', errorMessage)
+      throw new Error(errorMessage)
+    }
+    
+    console.log('🎨 Enviando dados validados para API:', normalizedData)
+    
     return this.request<PaintPixelResponse>('/pixels/paint', {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify(normalizedData),
     })
   }
 

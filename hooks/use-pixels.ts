@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { apiPixels } from '@/lib/api-pixels'
 import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/hooks/use-toast'
-import { latLngToApiCoords, apiCoordsToLatLng } from '@/lib/grid'
+import { latLngToApiCoords, apiCoordsToLatLng, normalizeColor } from '@/lib/grid'
 import type { Pixel, PixelArea, Coordinates } from '@/types/pixel'
 
 interface UsePixelsReturn {
@@ -46,11 +46,25 @@ export function usePixels(): UsePixelsReturn {
     }
 
     try {
+      // Validação das coordenadas
+      console.log('🎨 Convertendo coordenadas:', { lat, lng })
       const { x, y } = latLngToApiCoords(lat, lng)
       
-      console.log('🎨 Pintando pixel:', { lat, lng, x, y, color })
+      // Normalização da cor
+      const normalizedColor = normalizeColor(color)
       
-      const response = await apiPixels.paintPixel({ x, y, color })
+      console.log('🎨 Dados para API:', { x, y, color: normalizedColor })
+      
+      // Validação final antes de enviar
+      if (!Number.isInteger(x) || !Number.isInteger(y)) {
+        throw new Error(`Coordenadas não são inteiros: x=${x}, y=${y}`)
+      }
+      
+      if (x < 0 || x > 3600000 || y < 0 || y > 1800000) {
+        throw new Error(`Coordenadas fora do range válido: x=${x}, y=${y}`)
+      }
+      
+      const response = await apiPixels.paintPixel({ x, y, color: normalizedColor })
       
       if (response.success) {
         const pixel = response.data.pixel
@@ -66,8 +80,11 @@ export function usePixels(): UsePixelsReturn {
         
         toast({
           title: "Pixel pintado!",
-          description: `Pintado em (${x}, ${y})`,
+          description: `Pintado em (${x}, ${y}) com cor ${normalizedColor}`,
         })
+        
+        // Limpa erro se teve sucesso
+        setError(null)
         
         return true
       }
@@ -75,13 +92,20 @@ export function usePixels(): UsePixelsReturn {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao pintar pixel'
       
+      setError(errorMessage)
+      
       toast({
         title: "Erro ao pintar",
         description: errorMessage,
         variant: "destructive"
       })
       
-      console.error('❌ Erro ao pintar pixel:', err)
+      console.error('❌ Erro detalhado ao pintar pixel:', {
+        originalCoords: { lat, lng },
+        error: err,
+        user: user?.username,
+        credits: user?.credits
+      })
       return false
     }
   }, [user, updateAuthCredits, toast])
@@ -148,6 +172,7 @@ export function usePixels(): UsePixelsReturn {
     // Limpa pixels carregados e força recarregamento
     setPixels({})
     loadedAreas.current.clear()
+    setError(null)
   }, [])
 
   return {

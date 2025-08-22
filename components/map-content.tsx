@@ -107,16 +107,18 @@ export default function MapContent() {
     loadPixelsForBounds()
   }, [currentBounds, loadPixelsInArea])
 
-  // Função de pintura
+  // Função de pintura com logs detalhados
   const paintAtLatLng = useCallback(async (lat: number, lng: number) => {
     try {
-      const { lat: cellLat, lng: cellLng } = originFromLatLng(lat, lng)
-
+      console.log('🖱️ Click detectado no mapa:', { lat, lng, mode, user: !!user })
+      
       if (mode !== "paint") {
+        console.log('❌ Não está no modo pintura, ignorando click')
         return
       }
       
       if (!user) {
+        console.log('❌ Usuário não autenticado')
         toast({
           title: "Login necessário",
           description: "Você precisa fazer login para pintar. Use o botão 'Entrar' no cabeçalho."
@@ -124,16 +126,31 @@ export default function MapContent() {
         return
       }
       
-      const success = await paintPixel(cellLat, cellLng, readCurrentColor())
+      // Converte para coordenadas da célula
+      const { lat: cellLat, lng: cellLng } = originFromLatLng(lat, lng)
+      const currentColorValue = readCurrentColor()
+      
+      console.log('🎨 Dados para pintura:', {
+        originalCoords: { lat, lng },
+        cellCoords: { lat: cellLat, lng: cellLng },
+        color: currentColorValue,
+        userCredits: user.credits
+      })
+      
+      const success = await paintPixel(cellLat, cellLng, currentColorValue)
       
       if (success) {
+        console.log('✅ Pixel pintado com sucesso!')
         // Atualiza créditos após pintura bem-sucedida
         refreshCredits()
         // Limpa erro se pintou com sucesso
         setMapError(null)
+      } else {
+        console.log('❌ Falha ao pintar pixel')
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erro ao pintar pixel'
+      console.error('❌ Erro durante pintura:', error)
       setMapError(errorMessage)
       toast({
         title: "Erro ao pintar",
@@ -252,6 +269,25 @@ export default function MapContent() {
           >
             Limpar Erros
           </button>
+          <button
+            onClick={() => {
+              console.log('🐛 Debug Info:', {
+                mode,
+                user: user?.username,
+                credits: credits || user?.credits,
+                currentColor,
+                hoverCell,
+                pixelsCount: Object.keys(pixels).length,
+                currentBounds: currentBounds ? {
+                  sw: currentBounds.getSouthWest(),
+                  ne: currentBounds.getNorthEast()
+                } : null
+              })
+            }}
+            className="bg-green-500 text-white px-2 py-1 rounded text-xs hover:bg-green-600"
+          >
+            Debug Info
+          </button>
         </div>
       )}
 
@@ -310,6 +346,12 @@ export default function MapContent() {
            <div className="text-xs text-muted-foreground mt-2">
              {user ? "Clique no mapa para pintar pixels" : "Entre com sua conta"}
            </div>
+           {/* Info de debug no modo desenvolvimento */}
+           {process.env.NODE_ENV === 'development' && user && (
+             <div className="text-xs text-muted-foreground mt-1 border-t pt-1">
+               Cor: {currentColor} | Hover: {hoverCell ? `${hoverCell.lat.toFixed(6)}, ${hoverCell.lng.toFixed(6)}` : 'nenhum'}
+             </div>
+           )}
          </div>
        </div>
      )}
