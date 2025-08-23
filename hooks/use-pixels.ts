@@ -5,8 +5,11 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { apiPixels } from '@/lib/api-pixels'
 import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/hooks/use-toast'
+import { useGamification } from '@/hooks/use-gamification'
 import { latLngToApiCoords, apiCoordsToLatLng, normalizeColor, validateCoordinateSync } from '@/lib/grid'
+import { LevelUpToast } from '@/components/gamification/level-up-toast'
 import type { Pixel, PixelArea, Coordinates } from '@/types/pixel'
+import type { LevelUpInfo } from '@/types/gamification'
 
 interface UsePixelsReturn {
   pixels: Record<string, Pixel>
@@ -16,15 +19,24 @@ interface UsePixelsReturn {
   loadPixelsInArea: (area: PixelArea) => Promise<void>
   getPixelInfo: (lat: number, lng: number) => Promise<Pixel | null>
   refreshPixels: () => Promise<void>
+  levelUpInfo: LevelUpInfo | null
+  clearLevelUpInfo: () => void
 }
 
 export function usePixels(): UsePixelsReturn {
   const [pixels, setPixels] = useState<Record<string, Pixel>>({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [levelUpInfo, setLevelUpInfo] = useState<LevelUpInfo | null>(null)
+  
   const { user, updateCredits: updateAuthCredits } = useAuth()
   const { toast } = useToast()
+  const { handleLevelUp } = useGamification()
   const loadedAreas = useRef<Set<string>>(new Set())
+
+  const clearLevelUpInfo = useCallback(() => {
+    setLevelUpInfo(null)
+  }, [])
 
   const paintPixel = useCallback(async (lat: number, lng: number, color: string): Promise<boolean> => {
     console.log('🎨 usePixels.paintPixel chamado:', { lat, lng, color })
@@ -104,6 +116,14 @@ export function usePixels(): UsePixelsReturn {
         // Atualiza créditos localmente (diminui 1)
         updateAuthCredits(user.credits - 1)
         
+        // Verifica se houve level up
+        if ('levelUp' in response && response.levelUp) {
+          console.log('🎉 Level up detectado na resposta da API!', response.levelUp)
+          const levelUpData = response.levelUp as LevelUpInfo
+          setLevelUpInfo(levelUpData)
+          handleLevelUp(levelUpData)
+        }
+        
         // Verifica se o pixel foi pintado no local correto
         const { lat: paintedLat, lng: paintedLng } = apiCoordsToLatLng(pixel.x, pixel.y)
         const latDiff = Math.abs(lat - paintedLat)
@@ -113,7 +133,8 @@ export function usePixels(): UsePixelsReturn {
           solicitado: { lat, lng },
           pintado: { lat: paintedLat, lng: paintedLng },
           diferenças: { latDiff, lngDiff },
-          pixel
+          pixel,
+          levelUp: 'levelUp' in response ? response.levelUp : null
         })
         
         toast({
@@ -147,7 +168,7 @@ export function usePixels(): UsePixelsReturn {
       })
       return false
     }
-  }, [user, updateAuthCredits, toast])
+  }, [user, updateAuthCredits, toast, handleLevelUp])
 
   const loadPixelsInArea = useCallback(async (area: PixelArea) => {
     // Cria uma chave única para a área
@@ -269,6 +290,8 @@ export function usePixels(): UsePixelsReturn {
     paintPixel,
     loadPixelsInArea,
     getPixelInfo,
-    refreshPixels
+    refreshPixels,
+    levelUpInfo,
+    clearLevelUpInfo
   }
 }

@@ -6,22 +6,38 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { LogOut, PaintBucket, Sparkles, MousePointer2, User, Gift } from "lucide-react"
+import { LogOut, PaintBucket, Sparkles, MousePointer2, User, Gift, Trophy, Crown } from "lucide-react"
 import { HexColorPicker } from "react-colorful"
 import { readCurrentColor, setCurrentColor } from "@/lib/user-color"
 import { setMode, getMode, type Mode, onModeChange } from "@/lib/mode"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
 import { useCredits } from "@/hooks/use-credits"
+import { useGamification } from "@/hooks/use-gamification"
 import { LoginDialog } from "@/components/auth/login-dialog"
 import { ErrorCard } from "@/components/ui/error-card"
+import { LevelDisplay } from "@/components/gamification/level-display"
+import { LevelProgressBar } from "@/components/gamification/level-progress-bar"
+import { RankingDialog } from "@/components/gamification/ranking-dialog"
 
 export default function HeaderBar() {
   const { user, loading: authLoading, signOut } = useAuth()
   const { credits, claimDailyBonus, error: creditsError } = useCredits()
+  const { 
+    level, 
+    stats, 
+    leaderboard, 
+    loading: gamificationLoading,
+    error: gamificationError,
+    refreshLevel,
+    refreshStats,
+    refreshLeaderboard
+  } = useGamification()
+  
   const [color, setColor] = useState("#ff4d4f")
   const [mode, setModeState] = useState<Mode>("navigate")
   const [showLoginDialog, setShowLoginDialog] = useState(false)
+  const [showRankingDialog, setShowRankingDialog] = useState(false)
   const [bonusLoading, setBonusLoading] = useState(false)
   const [showCreditsError, setShowCreditsError] = useState(false)
 
@@ -100,6 +116,16 @@ export default function HeaderBar() {
     }
   }, [claimDailyBonus])
 
+  const handleRankingClick = useCallback(async () => {
+    if (leaderboard.length === 0) {
+      await refreshLeaderboard(10)
+    }
+    if (!stats) {
+      await refreshStats()
+    }
+    setShowRankingDialog(true)
+  }, [leaderboard, stats, refreshLeaderboard, refreshStats])
+
   // Usa créditos da API se disponível, senão usa do contexto de auth
   const displayCredits = credits !== null ? credits : user?.credits || 0
 
@@ -171,6 +197,24 @@ export default function HeaderBar() {
                   Pintar
                 </Button>
               </div>
+
+              {/* Gamificação - Level e Ranking */}
+              {user && level && (
+                <div className="hidden sm:flex items-center gap-2">
+                  <LevelDisplay level={level} compact />
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRankingClick}
+                    disabled={gamificationLoading}
+                    className="gap-1"
+                  >
+                    <Trophy className="h-3.5 w-3.5" />
+                    {stats ? `#${stats.ranking}` : "Ranking"}
+                  </Button>
+                </div>
+              )}
 
               {user && (
                 <div className="hidden sm:flex items-center gap-2">
@@ -326,6 +370,21 @@ export default function HeaderBar() {
               </Button>
             </div>
             
+            {/* Level e ranking mobile */}
+            {user && level && (
+              <div className="flex items-center gap-2">
+                <LevelDisplay level={level} compact />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRankingClick}
+                  disabled={gamificationLoading}
+                >
+                  <Trophy className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            )}
+            
             {/* Color picker e créditos para mobile */}
             <div className="flex items-center gap-2">
               <Popover>
@@ -384,12 +443,32 @@ export default function HeaderBar() {
               )}
             </div>
           </div>
+
+          {/* Progresso do nível - mobile */}
+          {user && level && (
+            <div className="md:hidden pb-3 -mt-1">
+              <LevelProgressBar 
+                level={level} 
+                showDetails={false}
+                className="px-2"
+              />
+            </div>
+          )}
         </div>
       </header>
 
       <LoginDialog 
         open={showLoginDialog} 
         onOpenChange={setShowLoginDialog} 
+      />
+
+      <RankingDialog
+        open={showRankingDialog}
+        onOpenChange={setShowRankingDialog}
+        leaderboard={leaderboard}
+        userStats={stats}
+        onRefreshLeaderboard={() => refreshLeaderboard(10)}
+        loading={gamificationLoading}
       />
     </>
   )

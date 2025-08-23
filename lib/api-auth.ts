@@ -1,4 +1,3 @@
-// lib/api-auth.ts
 "use client"
 
 import type { User } from '@/types/auth'
@@ -62,11 +61,6 @@ class ApiAuthClient {
       ...options,
     }
 
-    // Log apenas em desenvolvimento e para operações importantes
-    if (DEBUG_MODE && (endpoint.includes('/auth/') || endpoint.includes('/health'))) {
-      console.log('🔧 API Auth request:', endpoint)
-    }
-
     try {
       const response = await fetch(url, requestOptions)
 
@@ -81,13 +75,7 @@ class ApiAuthClient {
         console.error('❌ Erro na API de auth:', errorData)
         throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`)
       }
-
       const data = await response.json()
-      
-      if (DEBUG_MODE && (endpoint.includes('/auth/') || endpoint.includes('/health'))) {
-        console.log('✅ Resposta da API de auth:', endpoint)
-      }
-      
       return data
     } catch (error) {
       if (DEBUG_MODE) {
@@ -104,7 +92,6 @@ class ApiAuthClient {
   }
 
   async register(data: RegisterRequest): Promise<AuthResponse> {
-    console.log('🚀 Registrando usuário...')
     const response = await this.request<AuthResponse>('/auth/register', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -118,7 +105,6 @@ class ApiAuthClient {
   }
 
   async login(data: LoginRequest): Promise<AuthResponse> {
-    console.log('🔑 Fazendo login...')
     const response = await this.request<AuthResponse>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -132,7 +118,6 @@ class ApiAuthClient {
   }
 
   async googleAuth(idToken: string): Promise<AuthResponse> {
-    console.log('🔑 Fazendo login com Google...')
     const response = await this.request<AuthResponse>('/auth/google', {
       method: 'POST',
       body: JSON.stringify({ idToken }),
@@ -164,9 +149,7 @@ class ApiAuthClient {
 
   async healthCheck(): Promise<boolean> {
     try {
-      console.log('🏥 Verificando saúde da API...')
       await this.request('/health')
-      console.log('✅ API está saudável')
       return true
     } catch (error) {
       return false

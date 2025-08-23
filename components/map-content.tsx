@@ -21,6 +21,7 @@ import { usePixels } from "@/hooks/use-pixels"
 import { useCredits } from "@/hooks/use-credits"
 import { MapWrapper } from "./map-wrapper"
 import { ErrorCard } from "@/components/ui/error-card"
+import { LevelUpToast } from "@/components/gamification/level-up-toast"
 import type { PixelArea } from "@/types/pixel"
 
 // Fix para o Leaflet no Next.js
@@ -38,6 +39,15 @@ if (typeof window !== 'undefined') {
 }
 
 export default function MapContent() {
+  const { 
+    pixels, 
+    loading: pixelsLoading, 
+    error: pixelsError, 
+    paintPixel, 
+    loadPixelsInArea, 
+    levelUpInfo, 
+    clearLevelUpInfo 
+  } = usePixels()
   const [hoverCell, setHoverCell] = useState<{ lat: number; lng: number } | null>(null)
   const [mode, setModeState] = useState<Mode>("navigate")
   const [currentColor, setCurrentColor] = useState(readCurrentColor())
@@ -54,7 +64,6 @@ export default function MapContent() {
   const { toast } = useToast()
   const { user } = useAuth()
   const { resolvedTheme } = useTheme()
-  const { pixels, loading: pixelsLoading, error: pixelsError, paintPixel, loadPixelsInArea } = usePixels()
   const { credits, refreshCredits } = useCredits()
 
   // Inicialização
@@ -304,6 +313,9 @@ export default function MapContent() {
           />
         </div>
       )}
+
+      {/* Toast de Level Up */}
+      <LevelUpToast levelUpInfo={levelUpInfo} onShow={clearLevelUpInfo} />
 
       {/* Debug info detalhado - apenas em desenvolvimento */}
       {process.env.NODE_ENV === 'development' && (
