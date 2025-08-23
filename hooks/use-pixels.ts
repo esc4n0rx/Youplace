@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { apiPixels } from '@/lib/api-pixels'
 import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/hooks/use-toast'
-import { latLngToApiCoords, apiCoordsToLatLng, normalizeColor } from '@/lib/grid'
+import { latLngToApiCoords, apiCoordsToLatLng, normalizeColor, validateCoordinateSync } from '@/lib/grid'
 import type { Pixel, PixelArea, Coordinates } from '@/types/pixel'
 
 interface UsePixelsReturn {
@@ -27,6 +27,8 @@ export function usePixels(): UsePixelsReturn {
   const loadedAreas = useRef<Set<string>>(new Set())
 
   const paintPixel = useCallback(async (lat: number, lng: number, color: string): Promise<boolean> => {
+    console.log('🎨 usePixels.paintPixel chamado:', { lat, lng, color })
+    
     if (!user) {
       toast({
         title: "Login necessário",
@@ -46,30 +48,54 @@ export function usePixels(): UsePixelsReturn {
     }
 
     try {
-      // Validação das coordenadas
-      console.log('🎨 Convertendo coordenadas:', { lat, lng })
+      // VALIDAÇÃO 1: Coordenadas de entrada
+      console.log('🔍 Validando coordenadas de entrada...')
+      if (!isFinite(lat) || !isFinite(lng)) {
+        throw new Error(`Coordenadas não finitas: lat=${lat}, lng=${lng}`)
+      }
+      
+      // VALIDAÇÃO 2: Range válido
+      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        throw new Error(`Coordenadas fora do range válido: lat=${lat} lng=${lng}`)
+      }
+      
+      // VALIDAÇÃO 3: Sincronização de coordenadas
+      console.log('🔍 Validando sincronização de coordenadas...')
+      if (!validateCoordinateSync(lat, lng)) {
+        throw new Error(`Coordenadas não sincronizadas: lat=${lat} lng=${lng}`)
+      }
+      
+      // CONVERSÃO: Lat/lng para coordenadas da API
+      console.log('🔄 Convertendo coordenadas para API...')
       const { x, y } = latLngToApiCoords(lat, lng)
       
-      // Normalização da cor
-      const normalizedColor = normalizeColor(color)
-      
-      console.log('🎨 Dados para API:', { x, y, color: normalizedColor })
-      
-      // Validação final antes de enviar
+      // VALIDAÇÃO 4: Coordenadas da API
       if (!Number.isInteger(x) || !Number.isInteger(y)) {
-        throw new Error(`Coordenadas não são inteiros: x=${x}, y=${y}`)
+        throw new Error(`Coordenadas da API não são inteiros: x=${x}, y=${y}`)
       }
       
       if (x < 0 || x > 3600000 || y < 0 || y > 1800000) {
-        throw new Error(`Coordenadas fora do range válido: x=${x}, y=${y}`)
+        throw new Error(`Coordenadas da API fora do range: x=${x}, y=${y}`)
       }
       
+      // NORMALIZAÇÃO: Cor
+      const normalizedColor = normalizeColor(color)
+      
+      console.log('🎨 Dados finais para API:', { 
+        originalCoords: { lat, lng },
+        apiCoords: { x, y }, 
+        color: normalizedColor,
+        userCredits: user.credits
+      })
+      
+      // CHAMADA DA API
       const response = await apiPixels.paintPixel({ x, y, color: normalizedColor })
       
       if (response.success) {
         const pixel = response.data.pixel
         const pixelKey = `${pixel.x}_${pixel.y}`
         
+        // Atualiza o estado local imediatamente
         setPixels(prev => ({
           ...prev,
           [pixelKey]: pixel
@@ -77,6 +103,18 @@ export function usePixels(): UsePixelsReturn {
         
         // Atualiza créditos localmente (diminui 1)
         updateAuthCredits(user.credits - 1)
+        
+        // Verifica se o pixel foi pintado no local correto
+        const { lat: paintedLat, lng: paintedLng } = apiCoordsToLatLng(pixel.x, pixel.y)
+        const latDiff = Math.abs(lat - paintedLat)
+        const lngDiff = Math.abs(lng - paintedLng)
+        
+        console.log('✅ Verificação pós-pintura:', {
+          solicitado: { lat, lng },
+          pintado: { lat: paintedLat, lng: paintedLng },
+          diferenças: { latDiff, lngDiff },
+          pixel
+        })
         
         toast({
           title: "Pixel pintado!",
@@ -104,7 +142,8 @@ export function usePixels(): UsePixelsReturn {
         originalCoords: { lat, lng },
         error: err,
         user: user?.username,
-        credits: user?.credits
+        credits: user?.credits,
+        stackTrace: err instanceof Error ? err.stack : undefined
       })
       return false
     }
@@ -133,6 +172,16 @@ export function usePixels(): UsePixelsReturn {
         response.data.pixels.forEach(pixel => {
           const pixelKey = `${pixel.x}_${pixel.y}`
           newPixels[pixelKey] = pixel
+          
+          // Validação adicional: verifica se as coordenadas fazem sentido
+          try {
+            const { lat, lng } = apiCoordsToLatLng(pixel.x, pixel.y)
+            if (!isFinite(lat) || !isFinite(lng)) {
+              console.warn('⚠️ Pixel com coordenadas inválidas:', pixel)
+            }
+          } catch (conversionError) {
+            console.warn('⚠️ Erro na conversão do pixel:', pixel, conversionError)
+          }
         })
         
         setPixels(prev => ({
@@ -154,6 +203,12 @@ export function usePixels(): UsePixelsReturn {
 
   const getPixelInfo = useCallback(async (lat: number, lng: number): Promise<Pixel | null> => {
     try {
+      // Validação de coordenadas
+      if (!validateCoordinateSync(lat, lng)) {
+        console.warn('⚠️ Coordenadas não sincronizadas para busca de pixel:', { lat, lng })
+        return null
+      }
+      
       const { x, y } = latLngToApiCoords(lat, lng)
       
       const response = await apiPixels.getPixelInfo(x, y)
@@ -170,10 +225,42 @@ export function usePixels(): UsePixelsReturn {
 
   const refreshPixels = useCallback(async () => {
     // Limpa pixels carregados e força recarregamento
+    console.log('🔄 Limpando cache de pixels...')
     setPixels({})
     loadedAreas.current.clear()
     setError(null)
   }, [])
+
+  // Efeito para validar pixels existentes periodicamente (apenas em desenvolvimento)
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return
+    
+    const validateExistingPixels = () => {
+      const pixelEntries = Object.entries(pixels)
+      if (pixelEntries.length === 0) return
+      
+      let invalidCount = 0
+      pixelEntries.forEach(([key, pixel]) => {
+        try {
+          const { lat, lng } = apiCoordsToLatLng(pixel.x, pixel.y)
+          if (!isFinite(lat) || !isFinite(lng)) {
+            console.warn('⚠️ Pixel com coordenadas inválidas detectado:', { key, pixel, converted: { lat, lng } })
+            invalidCount++
+          }
+        } catch (error) {
+          console.warn('⚠️ Erro na validação do pixel:', { key, pixel, error })
+          invalidCount++
+        }
+      })
+      
+      if (invalidCount > 0) {
+        console.warn(`⚠️ ${invalidCount} pixels inválidos encontrados de ${pixelEntries.length} total`)
+      }
+    }
+    
+    const interval = setInterval(validateExistingPixels, 30000) // Valida a cada 30s
+    return () => clearInterval(interval)
+  }, [pixels])
 
   return {
     pixels,

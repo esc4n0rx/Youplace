@@ -6,7 +6,13 @@ import { Rectangle } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
 import { useToast } from "@/hooks/use-toast"
 import { readCurrentColor } from "@/lib/user-color"
-import { CELL_SIZE_DEG, originFromLatLng, latLngToApiCoords, apiCoordsToLatLng } from "@/lib/grid"
+import { 
+  CELL_SIZE_DEG, 
+  originFromLatLng, 
+  latLngToApiCoords, 
+  apiCoordsToLatLng,
+  validateCoordinateSync
+} from "@/lib/grid"
 import { getMode, onModeChange, type Mode } from "@/lib/mode"
 import { cn } from "@/lib/utils"
 import { useTheme } from "next-themes"
@@ -38,6 +44,12 @@ export default function MapContent() {
   const [isMapMounted, setIsMapMounted] = useState(false)
   const [currentBounds, setCurrentBounds] = useState<L.LatLngBounds | null>(null)
   const [mapError, setMapError] = useState<string | null>(null)
+  const [debugInfo, setDebugInfo] = useState<{
+    lastClickCoords?: { lat: number, lng: number }
+    lastCellCoords?: { lat: number, lng: number }
+    lastApiCoords?: { x: number, y: number }
+    coordinateValidation?: boolean
+  }>({})
   
   const { toast } = useToast()
   const { user } = useAuth()
@@ -89,6 +101,7 @@ export default function MapContent() {
         const areaHeight = maxY - minY
         
         if (areaWidth > 100 || areaHeight > 100) {
+          console.log('⚠️ Área muito grande para carregar:', { areaWidth, areaHeight })
           return
         }
 
@@ -107,10 +120,10 @@ export default function MapContent() {
     loadPixelsForBounds()
   }, [currentBounds, loadPixelsInArea])
 
-  // Função de pintura com logs detalhados
+  // Função de pintura com validação rigorosa
   const paintAtLatLng = useCallback(async (lat: number, lng: number) => {
     try {
-      console.log('🖱️ Click detectado no mapa:', { lat, lng, mode, user: !!user })
+      console.log('🖱️ INÍCIO DA PINTURA - Click detectado:', { lat, lng, mode, user: !!user })
       
       if (mode !== "paint") {
         console.log('❌ Não está no modo pintura, ignorando click')
@@ -126,31 +139,72 @@ export default function MapContent() {
         return
       }
       
-      // Converte para coordenadas da célula
+      // ETAPA 1: Validar coordenadas de entrada
+      console.log('🔍 ETAPA 1: Validando coordenadas de entrada...')
+      if (!isFinite(lat) || !isFinite(lng)) {
+        throw new Error(`Coordenadas de entrada inválidas: lat=${lat}, lng=${lng}`)
+      }
+      
+      // ETAPA 2: Obter origem da célula
+      console.log('🔍 ETAPA 2: Calculando origem da célula...')
       const { lat: cellLat, lng: cellLng } = originFromLatLng(lat, lng)
+      
+      // ETAPA 3: Converter para coordenadas da API
+      console.log('🔍 ETAPA 3: Convertendo para coordenadas da API...')
+      const { x: apiX, y: apiY } = latLngToApiCoords(cellLat, cellLng)
+      
+      // ETAPA 4: Validar sincronização de coordenadas
+      console.log('🔍 ETAPA 4: Validando sincronização...')
+      const isValidSync = validateCoordinateSync(cellLat, cellLng)
+      
+      // ETAPA 5: Converter de volta para verificação
+      console.log('🔍 ETAPA 5: Verificando conversão reversa...')
+      const { lat: backLat, lng: backLng } = apiCoordsToLatLng(apiX, apiY)
+      
       const currentColorValue = readCurrentColor()
       
-      console.log('🎨 Dados para pintura:', {
-        originalCoords: { lat, lng },
-        cellCoords: { lat: cellLat, lng: cellLng },
-        color: currentColorValue,
-        userCredits: user.credits
+      // Atualiza debug info
+      setDebugInfo({
+        lastClickCoords: { lat, lng },
+        lastCellCoords: { lat: cellLat, lng: cellLng },
+        lastApiCoords: { x: apiX, y: apiY },
+        coordinateValidation: isValidSync
       })
       
+      console.log('🎯 RESUMO COMPLETO DA CONVERSÃO:', {
+        clickOriginal: { lat, lng },
+        cellOrigin: { lat: cellLat, lng: cellLng },
+        apiCoords: { x: apiX, y: apiY },
+        convertedBack: { lat: backLat, lng: backLng },
+        differences: {
+          latDiff: Math.abs(cellLat - backLat),
+          lngDiff: Math.abs(cellLng - backLng)
+        },
+        color: currentColorValue,
+        userCredits: user.credits,
+        isValidSync
+      })
+      
+      if (!isValidSync) {
+        throw new Error('Coordenadas não sincronizadas - possível erro na conversão')
+      }
+      
+      // ETAPA 6: Executar pintura
+      console.log('🎨 ETAPA 6: Executando pintura na API...')
       const success = await paintPixel(cellLat, cellLng, currentColorValue)
       
       if (success) {
-        console.log('✅ Pixel pintado com sucesso!')
+        console.log('✅ PINTURA CONCLUÍDA COM SUCESSO!')
         // Atualiza créditos após pintura bem-sucedida
         refreshCredits()
         // Limpa erro se pintou com sucesso
         setMapError(null)
       } else {
-        console.log('❌ Falha ao pintar pixel')
+        console.log('❌ FALHA NA PINTURA')
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erro ao pintar pixel'
-      console.error('❌ Erro durante pintura:', error)
+      console.error('❌ ERRO DURANTE PINTURA:', error)
       setMapError(errorMessage)
       toast({
         title: "Erro ao pintar",
@@ -208,8 +262,8 @@ export default function MapContent() {
           fillColor: currentColor,
           color: isDark ? 'white' : 'black',
           fillOpacity: 0.7,
-          weight: 1,
-          dashArray: '2, 2'
+          weight: 2,
+          dashArray: '4, 4'
         }}
         interactive={false}
       />
@@ -251,6 +305,30 @@ export default function MapContent() {
         </div>
       )}
 
+      {/* Debug info detalhado - apenas em desenvolvimento */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="absolute top-2 left-2 z-[1000] map-overlay">
+          <div className="bg-background/95 backdrop-blur rounded-lg border shadow-lg p-3 text-xs max-w-xs">
+            <div className="font-medium mb-2">Debug de Coordenadas</div>
+            {debugInfo.lastClickCoords && (
+              <>
+                <div><strong>Click:</strong> {debugInfo.lastClickCoords.lat.toFixed(6)}, {debugInfo.lastClickCoords.lng.toFixed(6)}</div>
+                <div><strong>Célula:</strong> {debugInfo.lastCellCoords?.lat.toFixed(6)}, {debugInfo.lastCellCoords?.lng.toFixed(6)}</div>
+                <div><strong>API:</strong> {debugInfo.lastApiCoords?.x}, {debugInfo.lastApiCoords?.y}</div>
+                <div><strong>Válido:</strong> <span className={debugInfo.coordinateValidation ? 'text-green-600' : 'text-red-600'}>
+                  {debugInfo.coordinateValidation ? '✓' : '✗'}
+                </span></div>
+              </>
+            )}
+            {hoverCell && (
+              <div className="mt-2 pt-2 border-t">
+                <strong>Hover:</strong> {hoverCell.lat.toFixed(6)}, {hoverCell.lng.toFixed(6)}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Botões de debug - apenas em desenvolvimento */}
       {process.env.NODE_ENV === 'development' && (
         <div className="absolute top-2 right-2 z-[1000] flex gap-2 map-overlay">
@@ -263,15 +341,16 @@ export default function MapContent() {
           <button
             onClick={() => {
               setMapError(null)
+              setDebugInfo({})
               console.clear()
             }}
             className="bg-red-500 text-white px-2 py-1 rounded text-xs hover:bg-red-600"
           >
-            Limpar Erros
+            Limpar Debug
           </button>
           <button
             onClick={() => {
-              console.log('🐛 Debug Info:', {
+              console.log('🐛 Debug Info Completo:', {
                 mode,
                 user: user?.username,
                 credits: credits || user?.credits,
@@ -281,12 +360,14 @@ export default function MapContent() {
                 currentBounds: currentBounds ? {
                   sw: currentBounds.getSouthWest(),
                   ne: currentBounds.getNorthEast()
-                } : null
+                } : null,
+                debugInfo,
+                cellSize: CELL_SIZE_DEG
               })
             }}
             className="bg-green-500 text-white px-2 py-1 rounded text-xs hover:bg-green-600"
           >
-            Debug Info
+            Log Debug
           </button>
         </div>
       )}
@@ -350,6 +431,11 @@ export default function MapContent() {
            {process.env.NODE_ENV === 'development' && user && (
              <div className="text-xs text-muted-foreground mt-1 border-t pt-1">
                Cor: {currentColor} | Hover: {hoverCell ? `${hoverCell.lat.toFixed(6)}, ${hoverCell.lng.toFixed(6)}` : 'nenhum'}
+               {debugInfo.coordinateValidation !== undefined && (
+                 <div>Coords: <span className={debugInfo.coordinateValidation ? 'text-green-600' : 'text-red-600'}>
+                   {debugInfo.coordinateValidation ? '✓ OK' : '✗ ERRO'}
+                 </span></div>
+               )}
              </div>
            )}
          </div>
