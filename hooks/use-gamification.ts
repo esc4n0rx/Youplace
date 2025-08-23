@@ -80,6 +80,43 @@ function validateAndSanitizeLevel(levelData: any): UserLevel | null {
   }
 }
 
+// Função para sanitizar dados do leaderboard
+function sanitizeLeaderboardUser(userData: any): LeaderboardUser | null {
+  if (!userData || !userData.userId || !userData.username) {
+    console.warn('⚠️ Dados inválidos no leaderboard:', userData)
+    return null
+  }
+
+  try {
+    // Valores padrão para levelPhase se não fornecido
+    const defaultPhase = {
+      name: 'Explorador',
+      color: '#6B7280',
+      description: 'Fase inicial'
+    }
+
+    const sanitized: LeaderboardUser = {
+      id: userData.id || 'unknown',
+      userId: userData.userId,
+      username: userData.username,
+      currentLevel: typeof userData.currentLevel === 'number' ? userData.currentLevel : 1,
+      totalPixelsPainted: typeof userData.totalPixelsPainted === 'number' ? userData.totalPixelsPainted : 0,
+      title: userData.title || 'Iniciante',
+      experiencePoints: typeof userData.experiencePoints === 'number' ? userData.experiencePoints : 0,
+      levelPhase: userData.levelPhase ? {
+        name: userData.levelPhase.name || defaultPhase.name,
+        color: userData.levelPhase.color || defaultPhase.color,
+        description: userData.levelPhase.description || defaultPhase.description
+      } : defaultPhase
+    }
+
+    return sanitized
+  } catch (error) {
+    console.error('❌ Erro ao sanitizar dados do leaderboard:', error, userData)
+    return null
+  }
+}
+
 export function useGamification(): UseGamificationReturn {
   const [level, setLevel] = useState<UserLevel | null>(cache.level)
   const [stats, setStats] = useState<UserStats | null>(cache.stats)
@@ -219,13 +256,14 @@ export function useGamification(): UseGamificationReturn {
       if (response.success) {
         const leaderboardData = response.data.leaderboard || []
         
-        // Valida cada item do leaderboard
-        const sanitizedLeaderboard = leaderboardData.filter(item => {
-          if (!item.userId || !item.username) {
-            console.warn('⚠️ Item inválido no leaderboard:', item)
-            return false
-          }
-          return true
+        // Sanitiza cada item do leaderboard
+        const sanitizedLeaderboard = leaderboardData
+          .map(userData => sanitizeLeaderboardUser(userData))
+          .filter((item): item is LeaderboardUser => item !== null)
+        
+        console.log('✅ Ranking sanitizado:', {
+          original: leaderboardData,
+          sanitized: sanitizedLeaderboard
         })
         
         setLeaderboard(sanitizedLeaderboard)

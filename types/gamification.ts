@@ -30,7 +30,7 @@ export interface UserLevel {
     totalPixelsPainted: number
     title: string
     experiencePoints: number
-    levelPhase: {
+    levelPhase?: {
       name: string
       color: string
       description: string

@@ -40,6 +40,13 @@ const phaseIcons = {
   'Divindade': Crown
 }
 
+// Fase padrão para fallback
+const defaultPhase = {
+  name: 'Explorador',
+  color: '#6B7280',
+  description: 'Fase inicial'
+}
+
 export function RankingDialog({ 
   open, 
   onOpenChange, 
@@ -65,6 +72,11 @@ export function RankingDialog({
   }
 
   const isCurrentUser = (userId: string) => user?.id === userId
+
+  // Função para obter dados seguros da fase do usuário
+  const getSafePhase = (player: LeaderboardUser) => {
+    return player.levelPhase || defaultPhase
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -106,8 +118,15 @@ export function RankingDialog({
               {leaderboard.map((player, index) => {
                 const position = index + 1
                 const RankIcon = rankIcons[position as keyof typeof rankIcons]
-                const PhaseIcon = phaseIcons[player.levelPhase.name as keyof typeof phaseIcons] || Sparkles
+                const safePhase = getSafePhase(player)
+                const PhaseIcon = phaseIcons[safePhase.name as keyof typeof phaseIcons] || Sparkles
                 const isUser = isCurrentUser(player.userId)
+
+                console.log('🎮 Renderizando player no ranking:', {
+                  player,
+                  safePhase,
+                  PhaseIcon: PhaseIcon.name
+                })
 
                 return (
                   <div
@@ -153,9 +172,9 @@ export function RankingDialog({
                           variant="secondary" 
                           className="flex items-center gap-1 text-xs px-1.5 py-0.5"
                           style={{ 
-                            backgroundColor: `${player.levelPhase.color}15`,
-                            borderColor: `${player.levelPhase.color}40`,
-                            color: player.levelPhase.color 
+                            backgroundColor: `${safePhase.color}15`,
+                            borderColor: `${safePhase.color}40`,
+                            color: safePhase.color 
                           }}
                         >
                           <PhaseIcon className="h-3 w-3" />
@@ -182,6 +201,21 @@ export function RankingDialog({
             {loading && (
               <div className="flex items-center justify-center py-8">
                 <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            )}
+
+            {leaderboard.length === 0 && !loading && (
+              <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                <Trophy className="h-12 w-12 mb-3 opacity-50" />
+                <p className="text-center">Nenhum dado de ranking disponível</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRefresh}
+                  className="mt-3"
+                >
+                  Tentar novamente
+                </Button>
               </div>
             )}
           </TabsContent>
@@ -232,6 +266,14 @@ export function RankingDialog({
                       +{userStats.achievements.length - 5} conquistas adicionais
                     </p>
                   )}
+
+                  {userStats.achievements.length === 0 && (
+                    <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
+                      <Star className="h-10 w-10 mb-2 opacity-50" />
+                      <p className="text-sm text-center">Nenhuma conquista ainda</p>
+                      <p className="text-xs text-center">Continue pintando para desbloquear!</p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Próximos Marcos */}
@@ -262,10 +304,20 @@ export function RankingDialog({
                       </div>
                     ))}
                   </div>
+
+                  {userStats.milestones.length === 0 && (
+                    <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
+                      <Zap className="h-10 w-10 mb-2 opacity-50" />
+                      <p className="text-sm text-center">Nenhum marco próximo</p>
+                    </div>
+                  )}
                 </div>
               </>
             ) : (
               <div className="text-center py-8">
+                <div className="flex items-center justify-center mb-3">
+                  <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
                 <p className="text-muted-foreground">Carregando suas estatísticas...</p>
               </div>
             )}
