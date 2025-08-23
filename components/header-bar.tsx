@@ -40,6 +40,7 @@ export default function HeaderBar() {
   const [showRankingDialog, setShowRankingDialog] = useState(false)
   const [bonusLoading, setBonusLoading] = useState(false)
   const [showCreditsError, setShowCreditsError] = useState(false)
+  const [showGamificationError, setShowGamificationError] = useState(false)
 
   // Inicialização
   useEffect(() => {
@@ -82,6 +83,14 @@ export default function HeaderBar() {
       setShowCreditsError(true)
     }
   }, [creditsError])
+
+  // Mostra erro de gamificação se houver
+  useEffect(() => {
+    if (gamificationError) {
+      setShowGamificationError(true)
+      console.error('❌ Erro de gamificação no header:', gamificationError)
+    }
+  }, [gamificationError])
 
   const initials = useMemo(() => {
     if (!user?.username) return "?"
@@ -126,6 +135,10 @@ export default function HeaderBar() {
     setShowRankingDialog(true)
   }, [leaderboard, stats, refreshLeaderboard, refreshStats])
 
+  // Validação segura do level antes de renderizar
+  const canShowLevel = user && level && typeof level.currentLevel === 'number'
+  const canShowProgressBar = canShowLevel && level.levelPhase && level.levelPhase.name
+
   // Usa créditos da API se disponível, senão usa do contexto de auth
   const displayCredits = credits !== null ? credits : user?.credits || 0
 
@@ -143,13 +156,25 @@ export default function HeaderBar() {
         </div>
       )}
 
+      {/* Erro de gamificação fixo no topo */}
+      {showGamificationError && gamificationError && (
+        <div className="fixed top-0 left-0 right-0 z-[1300] p-4">
+          <ErrorCard
+            title="Erro no sistema de níveis"
+            message={gamificationError}
+            onDismiss={() => setShowGamificationError(false)}
+            className="max-w-md mx-auto"
+          />
+        </div>
+      )}
+
       <header
         className={cn(
           "fixed top-0 left-0 right-0 z-50",
           "bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/60",
           "dark:bg-neutral-900/60 supports-[backdrop-filter]:dark:bg-neutral-900/50",
           "border-b",
-          showCreditsError && creditsError ? "mt-20" : ""
+          (showCreditsError && creditsError) || (showGamificationError && gamificationError) ? "mt-20" : ""
         )}
         role="banner"
         aria-label="Barra superior do app"
@@ -199,7 +224,7 @@ export default function HeaderBar() {
               </div>
 
               {/* Gamificação - Level e Ranking */}
-              {user && level && (
+              {canShowLevel && (
                 <div className="hidden sm:flex items-center gap-2">
                   <LevelDisplay level={level} compact />
                   
@@ -329,147 +354,147 @@ export default function HeaderBar() {
                   size="sm"
                   onClick={handleSignOut}
                 >
-                  <LogOut className="h-4 w-4 mr-1.5" />
-                  Sair
-                </Button>
-              ) : (
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={() => setShowLoginDialog(true)}
-                  disabled={authLoading}
-                >
-                  <User className="h-4 w-4 mr-1.5" />
-                  {authLoading ? "Carregando..." : "Entrar"}
-                </Button>
-              )}
-            </div>
-          </div>
+                <LogOut className="h-4 w-4 mr-1.5" />
+                 Sair
+               </Button>
+             ) : (
+               <Button
+                 variant="default"
+                 size="sm"
+                 onClick={() => setShowLoginDialog(true)}
+                 disabled={authLoading}
+               >
+                 <User className="h-4 w-4 mr-1.5" />
+                 {authLoading ? "Carregando..." : "Entrar"}
+               </Button>
+             )}
+           </div>
+         </div>
 
-          {/* Mobile row */}
-          <div className="md:hidden pb-2 -mt-2 flex items-center justify-between">
-            <div className="flex gap-1">
-              <Button
-                variant={mode === "navigate" ? "default" : "outline"}
-                size="sm"
-                className="gap-1"
-                onClick={() => switchMode("navigate")}
-              >
-                <MousePointer2 className="h-4 w-4" />
-                Nav
-              </Button>
-              <Button
-                variant={mode === "paint" ? "default" : "outline"}
-                size="sm"
-                className="gap-1"
-                onClick={() => switchMode("paint")}
-                disabled={!user}
-              >
-                <PaintBucket className="h-4 w-4" />
-                Pintar
-              </Button>
-            </div>
-            
-            {/* Level e ranking mobile */}
-            {user && level && (
-              <div className="flex items-center gap-2">
-                <LevelDisplay level={level} compact />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleRankingClick}
-                  disabled={gamificationLoading}
-                >
-                  <Trophy className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            )}
-            
-            {/* Color picker e créditos para mobile */}
-            <div className="flex items-center gap-2">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="gap-1"
-                  >
-                    <div 
-                      className="h-3 w-3 rounded border border-white shadow-sm" 
-                      style={{ backgroundColor: color }} 
-                    />
-                    Cor
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-64 p-3" align="end">
-                  <div className="space-y-3">
-                    <HexColorPicker
-                      color={color}
-                      onChange={handleColorChange}
-                      style={{ width: '100%', height: '120px' }}
-                    />
-                    <div className="grid grid-cols-6 gap-1">
-                      {[
-                        "#FF0000", "#FF8000", "#FFFF00", "#00FF00", "#0000FF", "#FF00FF",
-                        "#FFFFFF", "#808080", "#000000", "#800000", "#008000", "#000080"
-                      ].map((presetColor) => (
-                        <button
-                          key={presetColor}
-                          className="w-5 h-5 rounded border"
-                          style={{ backgroundColor: presetColor }}
-                          onClick={() => handleColorChange(presetColor)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
-              
-              {user && (
-                <div className="flex items-center gap-1">
-                  <Badge variant="secondary" className="flex items-center gap-1">
-                    <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
-                    <span className="font-mono">{displayCredits}</span>
-                  </Badge>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleClaimBonus}
-                    disabled={bonusLoading}
-                  >
-                    <Gift className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              )}
-            </div>
-          </div>
+         {/* Mobile row */}
+         <div className="md:hidden pb-2 -mt-2 flex items-center justify-between">
+           <div className="flex gap-1">
+             <Button
+               variant={mode === "navigate" ? "default" : "outline"}
+               size="sm"
+               className="gap-1"
+               onClick={() => switchMode("navigate")}
+             >
+               <MousePointer2 className="h-4 w-4" />
+               Nav
+             </Button>
+             <Button
+               variant={mode === "paint" ? "default" : "outline"}
+               size="sm"
+               className="gap-1"
+               onClick={() => switchMode("paint")}
+               disabled={!user}
+             >
+               <PaintBucket className="h-4 w-4" />
+               Pintar
+             </Button>
+           </div>
+           
+           {/* Level e ranking mobile */}
+           {canShowLevel && (
+             <div className="flex items-center gap-2">
+               <LevelDisplay level={level} compact />
+               <Button
+                 variant="outline"
+                 size="sm"
+                 onClick={handleRankingClick}
+                 disabled={gamificationLoading}
+               >
+                 <Trophy className="h-3.5 w-3.5" />
+               </Button>
+             </div>
+           )}
+           
+           {/* Color picker e créditos para mobile */}
+           <div className="flex items-center gap-2">
+             <Popover>
+               <PopoverTrigger asChild>
+                 <Button 
+                   variant="outline" 
+                   size="sm" 
+                   className="gap-1"
+                 >
+                   <div 
+                     className="h-3 w-3 rounded border border-white shadow-sm" 
+                     style={{ backgroundColor: color }} 
+                   />
+                   Cor
+                 </Button>
+               </PopoverTrigger>
+               <PopoverContent className="w-64 p-3" align="end">
+                 <div className="space-y-3">
+                   <HexColorPicker
+                     color={color}
+                     onChange={handleColorChange}
+                     style={{ width: '100%', height: '120px' }}
+                   />
+                   <div className="grid grid-cols-6 gap-1">
+                     {[
+                       "#FF0000", "#FF8000", "#FFFF00", "#00FF00", "#0000FF", "#FF00FF",
+                       "#FFFFFF", "#808080", "#000000", "#800000", "#008000", "#000080"
+                     ].map((presetColor) => (
+                       <button
+                         key={presetColor}
+                         className="w-5 h-5 rounded border"
+                         style={{ backgroundColor: presetColor }}
+                         onClick={() => handleColorChange(presetColor)}
+                       />
+                     ))}
+                   </div>
+                 </div>
+               </PopoverContent>
+             </Popover>
+             
+             {user && (
+               <div className="flex items-center gap-1">
+                 <Badge variant="secondary" className="flex items-center gap-1">
+                   <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
+                   <span className="font-mono">{displayCredits}</span>
+                 </Badge>
+                 <Button
+                   variant="outline"
+                   size="sm"
+                   onClick={handleClaimBonus}
+                   disabled={bonusLoading}
+                 >
+                   <Gift className="h-3.5 w-3.5" />
+                 </Button>
+               </div>
+             )}
+           </div>
+         </div>
 
-          {/* Progresso do nível - mobile */}
-          {user && level && (
-            <div className="md:hidden pb-3 -mt-1">
-              <LevelProgressBar 
-                level={level} 
-                showDetails={false}
-                className="px-2"
-              />
-            </div>
-          )}
-        </div>
-      </header>
+         {/* Progresso do nível - mobile */}
+         {canShowProgressBar && (
+           <div className="md:hidden pb-3 -mt-1">
+             <LevelProgressBar 
+               level={level} 
+               showDetails={false}
+               className="px-2"
+             />
+           </div>
+         )}
+       </div>
+     </header>
 
-      <LoginDialog 
-        open={showLoginDialog} 
-        onOpenChange={setShowLoginDialog} 
-      />
+     <LoginDialog 
+       open={showLoginDialog} 
+       onOpenChange={setShowLoginDialog} 
+     />
 
-      <RankingDialog
-        open={showRankingDialog}
-        onOpenChange={setShowRankingDialog}
-        leaderboard={leaderboard}
-        userStats={stats}
-        onRefreshLeaderboard={() => refreshLeaderboard(10)}
-        loading={gamificationLoading}
-      />
-    </>
-  )
+     <RankingDialog
+       open={showRankingDialog}
+       onOpenChange={setShowRankingDialog}
+       leaderboard={leaderboard}
+       userStats={stats}
+       onRefreshLeaderboard={() => refreshLeaderboard(10)}
+       loading={gamificationLoading}
+     />
+   </>
+ )
 }

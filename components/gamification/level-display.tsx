@@ -19,8 +19,39 @@ const phaseIcons = {
   'Divindade': Crown
 }
 
+const defaultPhase = {
+  name: 'Explorador',
+  color: '#6B7280',
+  description: 'Fase inicial'
+}
+
 export const LevelDisplay = memo(function LevelDisplay({ level, compact = false }: LevelDisplayProps) {
-  const PhaseIcon = phaseIcons[level.levelPhase.name as keyof typeof phaseIcons] || Sparkles
+  // Validações defensivas
+  if (!level) {
+    console.warn('⚠️ LevelDisplay: level prop is null/undefined')
+    return null
+  }
+
+  // Garante que levelPhase existe com valores padrão
+  const safeLevel = {
+    ...level,
+    levelPhase: level.levelPhase || defaultPhase,
+    currentLevel: level.currentLevel || 1,
+    title: level.title || 'Iniciante'
+  }
+
+  // Garante que levelPhase.name existe
+  const phaseName = safeLevel.levelPhase.name || defaultPhase.name
+  const phaseColor = safeLevel.levelPhase.color || defaultPhase.color
+
+  console.log('🎮 LevelDisplay render:', {
+    level: safeLevel,
+    phaseName,
+    phaseColor,
+    compact
+  })
+
+  const PhaseIcon = phaseIcons[phaseName as keyof typeof phaseIcons] || Sparkles
 
   if (compact) {
     return (
@@ -28,13 +59,13 @@ export const LevelDisplay = memo(function LevelDisplay({ level, compact = false 
         variant="secondary" 
         className="flex items-center gap-1.5 px-2 py-1"
         style={{ 
-          backgroundColor: `${level.levelPhase.color}15`,
-          borderColor: `${level.levelPhase.color}40`,
-          color: level.levelPhase.color 
+          backgroundColor: `${phaseColor}15`,
+          borderColor: `${phaseColor}40`,
+          color: phaseColor 
         }}
       >
         <PhaseIcon className="h-3 w-3" />
-        <span className="font-mono font-bold">Nv. {level.currentLevel}</span>
+        <span className="font-mono font-bold">Nv. {safeLevel.currentLevel}</span>
       </Badge>
     )
   }
@@ -45,18 +76,18 @@ export const LevelDisplay = memo(function LevelDisplay({ level, compact = false 
         variant="secondary" 
         className="flex items-center gap-1.5"
         style={{ 
-          backgroundColor: `${level.levelPhase.color}15`,
-          borderColor: `${level.levelPhase.color}40`,
-          color: level.levelPhase.color 
+          backgroundColor: `${phaseColor}15`,
+          borderColor: `${phaseColor}40`,
+          color: phaseColor 
         }}
       >
         <PhaseIcon className="h-3.5 w-3.5" />
-        <span className="font-mono font-bold">Nível {level.currentLevel}</span>
+        <span className="font-mono font-bold">Nível {safeLevel.currentLevel}</span>
       </Badge>
       
       <div className="flex flex-col">
-        <span className="text-sm font-medium">{level.title}</span>
-        <span className="text-xs text-muted-foreground">{level.levelPhase.name}</span>
+        <span className="text-sm font-medium">{safeLevel.title}</span>
+        <span className="text-xs text-muted-foreground">{phaseName}</span>
       </div>
     </div>
   )
