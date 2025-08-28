@@ -2,25 +2,45 @@
 "use client"
 
 import { useEffect } from "react"
-import { useMapEvents } from "react-leaflet"
-import type { LeafletMouseEvent } from "leaflet"
+import { useMap, useMapEvents } from "react-leaflet"
+import type { LeafletMouseEvent, LatLngBounds } from "leaflet"
 import { Mode } from "@/lib/mode"
+import { latLngToApiCoords } from "@/lib/grid"
 
 interface MapEventHandlerProps {
   mode: Mode
   onPaint: (lat: number, lng: number) => void
   onHover: (lat: number, lng: number) => void
+  onViewportChange: (bounds: { minX: number; maxX: number; minY: number; maxY: number }) => void
 }
 
 export function MapEventHandler({ 
   mode, 
   onPaint, 
-  onHover 
+  onHover,
+  onViewportChange
 }: MapEventHandlerProps) {
-  const map = useMapEvents({
+  const map = useMap()
+
+  const handleViewportChange = () => {
+    const bounds: LatLngBounds = map.getBounds()
+    const northEast = bounds.getNorthEast()
+    const southWest = bounds.getSouthWest()
+
+    const minCoords = latLngToApiCoords(southWest.lat, southWest.lng)
+    const maxCoords = latLngToApiCoords(northEast.lat, northEast.lng)
+
+    onViewportChange({
+      minX: minCoords.x,
+      maxX: maxCoords.x,
+      minY: minCoords.y,
+      maxY: maxCoords.y,
+    })
+  }
+
+  useMapEvents({
     click: (e: LeafletMouseEvent) => {
       if (mode === "paint") {
-        console.log("🖱️ Click detectado:", e.latlng)
         onPaint(e.latlng.lat, e.latlng.lng)
       }
     },
@@ -28,8 +48,16 @@ export function MapEventHandler({
       if (mode === "paint") {
         onHover(e.latlng.lat, e.latlng.lng)
       }
-    }
+    },
+    moveend: () => handleViewportChange(),
+    zoomend: () => handleViewportChange(),
   })
+
+  useEffect(() => {
+    // Gatilho inicial para carregar os pixels da primeira visualização
+    handleViewportChange()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     if (!map) return

@@ -45,6 +45,7 @@ export default function MapContent() {
     error: pixelsError, 
     paintPixel, 
     loadPixelsInArea, 
+    updateViewport, // Adicionado
     levelUpInfo, 
     clearLevelUpInfo 
   } = usePixels()
@@ -92,42 +93,7 @@ export default function MapContent() {
     }
   }, [])
 
-  // Carrega pixels quando os bounds do mapa mudam
-  useEffect(() => {
-    if (!currentBounds) return
-
-    const loadPixelsForBounds = async () => {
-      try {
-        const sw = currentBounds.getSouthWest()
-        const ne = currentBounds.getNorthEast()
-        
-        // Converte bounds para coordenadas da API
-        const { x: minX, y: minY } = latLngToApiCoords(sw.lat, sw.lng)
-        const { x: maxX, y: maxY } = latLngToApiCoords(ne.lat, ne.lng)
-        
-        // Limita a área máxima para não sobrecarregar a API (100x100)
-        const areaWidth = maxX - minX
-        const areaHeight = maxY - minY
-        
-        if (areaWidth > 100 || areaHeight > 100) {
-          console.log('⚠️ Área muito grande para carregar:', { areaWidth, areaHeight })
-          return
-        }
-
-        const area: PixelArea = { minX, maxX, minY, maxY }
-        await loadPixelsInArea(area)
-        
-        // Limpa erro se carregou com sucesso
-        setMapError(null)
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Erro ao carregar pixels'
-        setMapError(errorMessage)
-        console.error('❌ Erro ao carregar pixels para bounds:', error)
-      }
-    }
-
-    loadPixelsForBounds()
-  }, [currentBounds, loadPixelsInArea])
+  
 
   // Função de pintura com validação rigorosa
   const paintAtLatLng = useCallback(async (lat: number, lng: number) => {
@@ -394,6 +360,7 @@ export default function MapContent() {
         onPaint={paintAtLatLng}
         onHover={handleHover}
         onBoundsChange={handleBoundsChange}
+        onViewportChange={updateViewport} // Adicionado
         rectangles={rectangles}
         hoverRect={hoverRect}
         className={cn(

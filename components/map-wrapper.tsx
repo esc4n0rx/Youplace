@@ -16,6 +16,7 @@ interface MapWrapperProps {
   onPaint: (lat: number, lng: number) => void
   onHover: (lat: number, lng: number) => void
   onBoundsChange?: (bounds: LatLngBounds) => void
+  onViewportChange: (bounds: { minX: number; maxX: number; minY: number; maxY: number }) => void // Adicionado
   rectangles: React.ReactNode
   hoverRect: React.ReactNode
   className?: string
@@ -59,6 +60,7 @@ export function MapWrapper({
   onPaint,
   onHover,
   onBoundsChange,
+  onViewportChange, // Adicionado
   rectangles,
   hoverRect,
   className
@@ -109,6 +111,7 @@ export function MapWrapper({
         mode={mode}
         onPaint={onPaint}
         onHover={onHover}
+        onViewportChange={onViewportChange} // Passado para o handler
       />
 
       {/* Watcher para bounds */}
