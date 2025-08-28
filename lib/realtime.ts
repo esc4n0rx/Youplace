@@ -2,7 +2,7 @@
 "use client"
 
 import { io, Socket } from "socket.io-client"
-import { getToken } from "@/lib/auth"
+import { apiAuth } from "@/lib/api-auth"
 import type { Pixel } from "@/types/pixel"
 
 interface ServerToClientEvents {
@@ -46,7 +46,7 @@ class SocketManager {
       return
     }
 
-    const token = getToken()
+    const token = apiAuth.getToken()
     if (!token) {
       console.error("Token de autenticação não encontrado.")
       return
