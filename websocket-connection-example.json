@@ -1,0 +1,69 @@
+{
+  "info": "Exemplos de como conectar ao servidor WebSocket com autenticação.",
+  "methods": [
+    {
+      "name": "Método 1: Usando a opção 'auth' (Recomendado)",
+      "description": "Este é o método padrão e recomendado pelo Socket.IO para passar credenciais de autenticação.",
+      "client_code_example": {
+        "javascript": [
+          "import { io } from 'socket.io-client';",
+          "",
+          "// Obtenha o token de autenticação após o login do usuário",
+          "const authToken = 'SEU_TOKEN_JWT_AQUI';",
+          "",
+          "const socket = io('http://localhost:3000', {",
+          "  // O transporte 'websocket' é preferível para evitar problemas com sticky sessions.",
+          "  transports: ['websocket'],",
+          "  auth: {",
+          "    token: authToken",
+          "  }",
+          "});",
+          "",
+          "socket.on('connect', () => {",
+          "  console.log('Conectado ao servidor WebSocket!', 'ID do Socket:', socket.id);",
+          "});",
+          "",
+          "socket.on('connect_error', (err) => {",
+          "  // O erro 'Invalid or expired token' aparecerá aqui se o token for inválido.",
+          "  console.error('Erro de conexão:', err.message);",
+          "});",
+          "",
+          "socket.on('error', (err) => {",
+          "  console.error('Erro do servidor:', err);",
+          "});"
+        ]
+      }
+    },
+    {
+      "name": "Método 2: Usando o cabeçalho 'Authorization'",
+      "description": "Este método simula um cabeçalho HTTP 'Authorization: Bearer <token>' e também é suportado pelo servidor.",
+      "client_code_example": {
+        "javascript": [
+          "import { io } from 'socket.io-client';",
+          "",
+          "const authToken = 'SEU_TOKEN_JWT_AQUI';",
+          "",
+          "const socket = io('http://localhost:3000', {",
+          "  transports: ['websocket'],",
+          "  extraHeaders: {",
+          "    Authorization: `Bearer ${authToken}`",
+          "  }",
+          "});",
+          "",
+          "socket.on('connect', () => {",
+          "  console.log('Conectado com sucesso!', 'ID:', socket.id);",
+          "});",
+          "",
+          "socket.on('connect_error', (err) => {",
+          "  console.error('Falha na conexão:', err.message);",
+          "});"
+        ]
+      }
+    }
+  ],
+  "important_notes": [
+    "Substitua 'SEU_TOKEN_JWT_AQUI' pelo token JWT real obtido da sua rota de autenticação (ex: /login).",
+    "Certifique-se de que o endereço do servidor ('http://localhost:3000') está correto.",
+    "O token JWT tem um tempo de expiração. Se você se conectar após o token expirar, receberá o erro 'Invalid or expired token'. Garanta que está usando um token válido."
+  ]
+}

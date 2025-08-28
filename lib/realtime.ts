@@ -56,7 +56,7 @@ class SocketManager {
 
     this.socket = io(URL, {
       auth: {
-        token: `Bearer ${token}`,
+        token: token,
       },
       transports: ["websocket", "polling"],
     })
