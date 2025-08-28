@@ -65,6 +65,15 @@ class SocketManager {
       console.log("✅ Conectado ao servidor WebSocket:", this.socket?.id)
     })
 
+    this.socket.on("connect_error", (err) => {
+      console.error("❌ Erro de conexão com o WebSocket:", err.message)
+      // Se o erro for de autenticação, desloga o usuário
+      if (err.message.includes("Token inválido")) {
+        console.log("⚠️ Erro de autenticação no WebSocket, disparando evento de logout.")
+        window.dispatchEvent(new CustomEvent("rplace:auth_error"))
+      }
+    })
+
     this.socket.on("disconnect", () => {
       console.log("🔌 Desconectado do servidor WebSocket.")
     })

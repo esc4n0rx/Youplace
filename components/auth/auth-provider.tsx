@@ -83,6 +83,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     checkAuth()
   }, [])
 
+  // Listener para erros de autenticação do WebSocket
+  useEffect(() => {
+    const handleAuthError = () => {
+      console.log("🔴 Erro de autenticação detectado. Forçando logout.")
+      signOut()
+    }
+
+    window.addEventListener("rplace:auth_error", handleAuthError)
+
+    return () => {
+      window.removeEventListener("rplace:auth_error", handleAuthError)
+    }
+  }, [])
+
   const signIn = (user: User, token: string) => {
     console.log('✅ Usuário logado com sucesso:', user)
     apiAuth.setToken(token)
