@@ -22,7 +22,7 @@ interface ClientToServerEvents {
   }) => void
 }
 
-const URL = process.env.NEXT_PUBLIC_WEBSOCKET_URL || "ws://api.youplace.space"
+const URL = process.env.NEXT_PUBLIC_WEBSOCKET_URL || "wss://api.youplace.space"
 
 class SocketManager {
   private static instance: SocketManager
